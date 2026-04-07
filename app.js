@@ -176,8 +176,8 @@ function renderSummary(summary) {
     buildSummaryCard("日数", summary.total, "静的に3か月固定", "is-neutral"),
     buildSummaryCard("◎ 絶好", summary.special, "スコア8以上", "is-special"),
     buildSummaryCard("○ 行くべき", summary.go, "スコア6-7", "is-go"),
-    buildSummaryCard("△ どちらでも", summary.hold, "スコア3-5", "is-hold"),
-    buildSummaryCard("× 見送り", summary.avoid, "スコア2以下", "is-avoid")
+    buildSummaryCard("△ どちらでも", summary.hold, "スコア4-5", "is-hold"),
+    buildSummaryCard("× 見送り", summary.avoid, "スコア3以下", "is-avoid")
   ].join("");
 }
 

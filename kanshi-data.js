@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 export const RATING_THRESHOLDS = Object.freeze({
   specialMin: 8,
   goMin: 6,
-  holdMin: 3
+  holdMin: 4
 });
 
 export const SEXAGENARY_CYCLE = Array.from(
