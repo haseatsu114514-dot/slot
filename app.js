@@ -214,7 +214,7 @@ function renderUpcoming(upcomingDays) {
           </span>
           <span class="mini-tag-row">
             ${day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : ""}
-            ${buildStatusChip(day.playStyle.label, day.playStyle.tone)}
+            ${buildPlayStyleChip(day.playStyle)}
             ${buildWeekdayChip(day.weekday, day.weekdayContext)}
           </span>
         </button>
@@ -300,13 +300,16 @@ function renderSelectedDay() {
   const specialDateAdjustmentLabel = day.specialDateContext.adjustment === 0
     ? "日付補正なし"
     : `日付補正 ${day.specialDateContext.adjustment}`;
+  const playStyleAdjustmentLabel = day.playStyle.adjustment === 0
+    ? "質感補正なし"
+    : `質感補正 ${getScoreText(day.playStyle.adjustment)}`;
   const monthTags = day.monthContext.statuses.length
     ? day.monthContext.statuses.map((status) => `<span class="tag ${getMonthStatusClass(status)}">月${status} ${getScoreText(MONTH_STATUS_SCORE[status] ?? 0)}</span>`).join("")
     : `<span class="tag">月補正なし</span>`;
   const recordTags = day.record.tags.length
     ? day.record.tags.map((tag) => `<span class="tag ${getTagClass(tag)}">${tag}</span>`).join("")
     : "";
-  const qualityChip = buildStatusChip(`質感 ${day.playStyle.label}`, day.playStyle.tone);
+  const qualityChip = buildPlayStyleChip(day.playStyle, "質感 ");
   const weekdayChip = buildWeekdayChip(day.weekday, day.weekdayContext);
   const specialDateChip = day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "";
 
@@ -326,7 +329,7 @@ function renderSelectedDay() {
       <div class="selected-stat">
         <span>現在スコア</span>
         <strong>${day.record.score}</strong>
-        <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel}</small>
+        <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
       </div>
       <div class="selected-stat">
         <span>通変星</span>
@@ -394,7 +397,7 @@ function renderRecentEntries() {
           </div>
           <div class="mini-tag-row">
             ${info.specialDateContext.statuses.length ? buildSpecialDateChip(info.specialDateContext) : ""}
-            ${buildStatusChip(info.playStyle.label, info.playStyle.tone)}
+            ${buildPlayStyleChip(info.playStyle)}
             ${buildWeekdayChip(info.weekday, info.weekdayContext)}
           </div>
           ${entry.memo ? `<p class="recent-entry-note">${escapeHtml(entry.memo)}</p>` : ""}
@@ -439,7 +442,7 @@ function buildRankingItem(item) {
         <span>${formatYen(item.avg)}</span>
       </div>
       <div class="mini-tag-row">
-        ${buildStatusChip(playStyle.label, playStyle.tone)}
+        ${buildPlayStyleChip(playStyle)}
       </div>
     </article>
   `;
@@ -455,7 +458,7 @@ function updateFormPreview() {
     <strong>${info.kanshi}</strong>
     <span>${info.rating.label} ${info.rating.text}</span>
     <span>現在スコア ${info.record.score}</span>
-    <span>${info.playStyle.label}</span>
+    <span>${formatAdjustmentLabel(info.playStyle.label, info.playStyle.adjustment)}</span>
     <span>${info.weekdayContext.shortLabel} ${getScoreText(info.weekdayContext.adjustment)}</span>
     <span>${buildMonthMeta(info.monthContext)}</span>
   `;
@@ -488,6 +491,14 @@ function getMonthStatusClass(status) {
 
 function buildSpecialDateChip(specialDateContext) {
   return `<span class="tag ${getToneClass(specialDateContext.tone)}">${specialDateContext.label} ${getScoreText(specialDateContext.adjustment)}</span>`;
+}
+
+function formatAdjustmentLabel(label, adjustment) {
+  return adjustment === 0 ? label : `${label} ${getScoreText(adjustment)}`;
+}
+
+function buildPlayStyleChip(playStyle, prefix = "") {
+  return `<span class="tag ${getToneClass(playStyle.tone)}">${formatAdjustmentLabel(`${prefix}${playStyle.label}`, playStyle.adjustment)}</span>`;
 }
 
 function getToneClass(tone) {
