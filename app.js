@@ -10,7 +10,8 @@ import {
   getMonthSequence,
   getRating,
   getKanshiForDateKey,
-  RATING_THRESHOLDS
+  RATING_THRESHOLDS,
+  isPerfectRecord
 } from "./kanshi-data.js";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
@@ -141,7 +142,8 @@ function getSummary(months) {
   const allDays = months.flatMap((month) => month.dayRows);
   return {
     total: allDays.length,
-    special: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin).length,
+    perfect: allDays.filter((day) => isPerfectRecord(day.record)).length,
+    special: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(day.record)).length,
     go: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin && day.record.score < RATING_THRESHOLDS.specialMin).length,
     hold: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.holdMin && day.record.score < RATING_THRESHOLDS.goMin).length,
     avoid: allDays.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length
@@ -173,7 +175,8 @@ function render() {
 function renderSummary(summary) {
   refs.summaryCards.innerHTML = [
     buildSummaryCard("日数", summary.total, "静的に3か月固定", "is-neutral"),
-    buildSummaryCard("◎ 絶好", summary.special, "スコア8以上", "is-special"),
+    buildSummaryCard("★ 完璧", summary.perfect, "スコア9", "is-perfect"),
+    buildSummaryCard("◎ 絶好", summary.special, "スコア8", "is-special"),
     buildSummaryCard("○ 行くべき", summary.go, "スコア6-7", "is-go"),
     buildSummaryCard("△ どちらでも", summary.hold, "スコア4-5", "is-hold"),
     buildSummaryCard("× 見送り", summary.avoid, "スコア3以下", "is-avoid")
@@ -222,6 +225,7 @@ function renderCalendar(months) {
         targetDays.reduce((sum, day) => sum + day.expectedValue, 0)
       );
       const statChips = [
+        buildMonthStat("★", month.stats.perfect, "perfect"),
         buildMonthStat("◎", month.stats.special, "special"),
         buildMonthStat("○", month.stats.go, "go"),
         buildMonthStat("△", month.stats.hold, "hold"),
@@ -255,7 +259,7 @@ function renderCalendar(months) {
               <h3>${month.label}</h3>
               <p class="month-pillar">月干支: ${month.monthPillarSummary}</p>
               <p class="month-expectation">
-                ○・◎だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
+                ★・◎・○だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
               </p>
             </div>
             <div class="month-stats">${statChips}</div>
@@ -334,7 +338,7 @@ function renderSelectedDay() {
 
     <div class="tag-row">${monthTags}${recordTags}</div>
     <p class="selected-note">
-      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。月の半空・真空・冲は月全体の補正として反映し、入力した成績は日基準スコアに反映されます。
+      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。
     </p>
   `;
 }
@@ -392,7 +396,7 @@ function renderRankings(records) {
 }
 
 function buildRankingItem(item) {
-  const rating = getRating(item.score);
+  const rating = getRating(item.score, item);
   return `
     <article class="ranking-item tier-${rating.tier}">
       <div>

@@ -14,6 +14,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 });
 
 export const RATING_THRESHOLDS = Object.freeze({
+  perfectMin: 9,
   specialMin: 8,
   goMin: 6,
   holdMin: 4
@@ -288,6 +289,11 @@ export function getMonthContext(dateKey) {
   };
 }
 
+export function isPerfectRecord(record) {
+  if (!record) return false;
+  return record.score >= RATING_THRESHOLDS.perfectMin;
+}
+
 export function blendExpected(avg, sendan, days) {
   const forecast = toNumberOrNull(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
@@ -328,7 +334,10 @@ export function applyEntriesToRecords(records, entries = []) {
   return nextRecords;
 }
 
-export function getRating(score) {
+export function getRating(score, record = null) {
+  if (isPerfectRecord(record || { score })) {
+    return { label: "★", tier: "perfect", text: "かなり完璧な日" };
+  }
   if (score >= RATING_THRESHOLDS.specialMin) {
     return { label: "◎", tier: "special", text: "絶好の日" };
   }
@@ -359,7 +368,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     score: clamp(baseRecord.score + monthContext.adjustment, -6, 9),
     monthAdjustment: monthContext.adjustment
   };
-  const rating = getRating(record.score);
+  const rating = getRating(record.score, record);
   return {
     date,
     dateKey,
@@ -394,7 +403,8 @@ export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG
   }
 
   const stats = {
-    special: dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin).length,
+    perfect: dayRows.filter((day) => isPerfectRecord(day.record)).length,
+    special: dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(day.record)).length,
     go: dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin && day.record.score < RATING_THRESHOLDS.specialMin).length,
     hold: dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.holdMin && day.record.score < RATING_THRESHOLDS.goMin).length,
     avoid: dayRows.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length
