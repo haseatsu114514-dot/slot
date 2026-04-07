@@ -19,6 +19,45 @@ export const RATING_THRESHOLDS = Object.freeze({
   holdMin: 4
 });
 
+const RAW_MONTH_PILLAR_TRANSITIONS = [
+  { startsAt: "2025-05-05T14:57:00+09:00", kanshi: "辛巳" },
+  { startsAt: "2025-06-05T18:57:00+09:00", kanshi: "壬午" },
+  { startsAt: "2025-07-07T05:05:00+09:00", kanshi: "癸未" },
+  { startsAt: "2025-08-07T14:52:00+09:00", kanshi: "甲申" },
+  { startsAt: "2025-09-07T17:52:00+09:00", kanshi: "乙酉" },
+  { startsAt: "2025-10-08T09:41:00+09:00", kanshi: "丙戌" },
+  { startsAt: "2025-11-07T13:04:00+09:00", kanshi: "丁亥" },
+  { startsAt: "2025-12-07T06:05:00+09:00", kanshi: "戊子" },
+  { startsAt: "2026-01-05T17:23:00+09:00", kanshi: "己丑" },
+  { startsAt: "2026-02-04T05:02:00+09:00", kanshi: "庚寅" },
+  { startsAt: "2026-03-05T22:59:00+09:00", kanshi: "辛卯" },
+  { startsAt: "2026-04-05T03:40:00+09:00", kanshi: "壬辰" },
+  { startsAt: "2026-05-05T20:49:00+09:00", kanshi: "癸巳" },
+  { startsAt: "2026-06-06T00:48:00+09:00", kanshi: "甲午" },
+  { startsAt: "2026-07-07T10:57:00+09:00", kanshi: "乙未" }
+];
+
+export const MONTH_PILLAR_TRANSITIONS = Object.freeze(
+  RAW_MONTH_PILLAR_TRANSITIONS.map((item) =>
+    Object.freeze({
+      ...item,
+      startsAtMs: new Date(item.startsAt).getTime()
+    })
+  )
+);
+
+export const MONTH_STATUS_EFFECTS = Object.freeze({
+  "半空": -1,
+  "真空": -2,
+  "冲": -1
+});
+
+export const MONTH_BRANCH_STATUS_MAP = Object.freeze({
+  "子": ["半空"],
+  "丑": ["真空"],
+  "卯": ["冲"]
+});
+
 export const SEXAGENARY_CYCLE = Array.from(
   { length: 60 },
   (_, index) => HEAVENLY_STEMS[index % 10] + EARTHLY_BRANCHES[index % 12]
@@ -211,6 +250,44 @@ export function buildRecordsFromPayload(recordMap = {}) {
   );
 }
 
+export function getMonthKanshiForDateKey(dateKey) {
+  const targetMs = new Date(`${dateKey}T12:00:00+09:00`).getTime();
+  let current = null;
+
+  for (const transition of MONTH_PILLAR_TRANSITIONS) {
+    if (targetMs >= transition.startsAtMs) {
+      current = transition.kanshi;
+      continue;
+    }
+    break;
+  }
+
+  return current;
+}
+
+export function getMonthStatusesForKanshi(monthKanshi) {
+  if (!monthKanshi) return [];
+  const branch = monthKanshi.slice(1);
+  return [...(MONTH_BRANCH_STATUS_MAP[branch] || [])];
+}
+
+export function getMonthAdjustmentForStatuses(statuses = []) {
+  const total = statuses.reduce((sum, status) => sum + (MONTH_STATUS_EFFECTS[status] || 0), 0);
+  return clamp(total, -2, 0);
+}
+
+export function getMonthContext(dateKey) {
+  const monthKanshi = getMonthKanshiForDateKey(dateKey);
+  const statuses = getMonthStatusesForKanshi(monthKanshi);
+  const adjustment = getMonthAdjustmentForStatuses(statuses);
+
+  return {
+    kanshi: monthKanshi,
+    statuses,
+    adjustment
+  };
+}
+
 export function blendExpected(avg, sendan, days) {
   const forecast = toNumberOrNull(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
@@ -274,7 +351,14 @@ export function formatYen(value) {
 export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
-  const record = records[kanshi] || normalizeRecord(kanshi, {});
+  const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
+  const monthContext = getMonthContext(dateKey);
+  const record = {
+    ...baseRecord,
+    baseScore: baseRecord.score,
+    score: clamp(baseRecord.score + monthContext.adjustment, -6, 9),
+    monthAdjustment: monthContext.adjustment
+  };
   const rating = getRating(record.score);
   return {
     date,
@@ -285,7 +369,9 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     weekday: date.getUTCDay(),
     kanshi,
     record,
-    rating
+    rating,
+    monthContext,
+    expectedValue: Math.round(blendExpected(record.avg, record.sendan, record.days))
   };
 }
 
@@ -314,12 +400,21 @@ export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG
     avoid: dayRows.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length
   };
 
+  const monthPillarSequence = dayRows.reduce((accumulator, dayInfo) => {
+    const current = dayInfo.monthContext.kanshi || "月干支未設定";
+    if (accumulator[accumulator.length - 1] !== current) {
+      accumulator.push(current);
+    }
+    return accumulator;
+  }, []);
+
   return {
     year,
     month,
     label: `${year}年${month}月`,
     cells,
     dayRows,
-    stats
+    stats,
+    monthPillarSummary: monthPillarSequence.join(" → ")
   };
 }
