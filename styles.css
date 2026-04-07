@@ -12,6 +12,7 @@
   --go: #8fd26d;
   --hold: #e7b94c;
   --avoid: #de6a63;
+  --avoid-soft: #9aa3b2;
   --neutral: #7f8696;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
 }
@@ -200,7 +201,7 @@ a {
 }
 
 .summary-card.is-avoid {
-  background: rgba(222, 106, 99, 0.12);
+  background: rgba(154, 163, 178, 0.14);
 }
 
 .summary-label,
@@ -497,10 +498,15 @@ a {
 }
 
 .tag.is-alert,
-.tier-avoid,
-.is-avoid {
+.is-alert {
   color: var(--avoid);
   background: rgba(222, 106, 99, 0.13);
+}
+
+.tier-avoid,
+.is-avoid {
+  color: var(--avoid-soft);
+  background: rgba(154, 163, 178, 0.14);
 }
 
 .tag.is-rough,

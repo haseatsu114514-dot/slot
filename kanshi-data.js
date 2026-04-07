@@ -402,7 +402,7 @@ export function getPlayStyle(record) {
   const needsMoreData = tags.some((tag) => tag.includes("要検証") || tag.includes("データ無"));
 
   if (days <= 0) {
-    return { label: "データ待ち", shortLabel: "未知", tone: "neutral", note: "まだ実績が少なく、傾向を判定しづらい日です。" };
+    return { label: "データ待ち", shortLabel: "未知", tone: "neutral", note: "まだ実績が少なく、傾向を判定しづらい日です。", adjustment: 0 };
   }
 
   if (
@@ -410,7 +410,7 @@ export function getPlayStyle(record) {
     (days >= 3 && avg !== null && avg >= 8000 && score >= RATING_THRESHOLDS.goMin && !hasActualBad) ||
     (hasActualGood && days >= 2 && avg !== null && avg >= 12000 && score >= RATING_THRESHOLDS.goMin)
   ) {
-    return { label: "勝ちやすい", shortLabel: "勝ち筋", tone: "good", note: "プラス実績が比較的安定していて、拾いやすい寄りです。" };
+    return { label: "勝ちやすい", shortLabel: "勝ち筋", tone: "good", note: "プラス実績が比較的安定していて、拾いやすい寄りです。", adjustment: 1 };
   }
 
   if (
@@ -421,7 +421,7 @@ export function getPlayStyle(record) {
       needsMoreData
     )
   ) {
-    return { label: "荒い", shortLabel: "荒れ筋", tone: "rough", note: "期待値は高い一方で、ブレ幅が大きめです。" };
+    return { label: "荒い", shortLabel: "荒れ筋", tone: "rough", note: "期待値は高い一方で、ブレ幅が大きめです。", adjustment: 0 };
   }
 
   if (
@@ -431,14 +431,14 @@ export function getPlayStyle(record) {
     days >= 2 &&
     !hasActualBad
   ) {
-    return { label: "安定寄り", shortLabel: "安定", tone: "stable", note: "派手さは薄めでも、比較的まとまりやすいタイプです。" };
+    return { label: "安定寄り", shortLabel: "安定", tone: "stable", note: "派手さは薄めでも、比較的まとまりやすいタイプです。", adjustment: 0.5 };
   }
 
   if (hasActualBad || (avg !== null && avg < 0) || score < RATING_THRESHOLDS.holdMin) {
-    return { label: "苦戦寄り", shortLabel: "苦戦", tone: "caution", note: "実績面ではマイナス寄りなので、慎重に見たい日です。" };
+    return { label: "苦戦寄り", shortLabel: "苦戦", tone: "caution", note: "実績面ではマイナス寄りなので、慎重に見たい日です。", adjustment: -1 };
   }
 
-  return { label: "様子見", shortLabel: "様子見", tone: "neutral", note: "大きな決め手はまだ薄く、補助情報とあわせて見たい日です。" };
+  return { label: "読みにくい", shortLabel: "読みにくい", tone: "neutral", note: "大きな決め手がまだ薄く、補助情報とあわせて見たい日です。", adjustment: 0 };
 }
 
 export function formatYen(value) {
@@ -454,15 +454,21 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
   const monthContext = getMonthContext(dateKey);
   const specialDateContext = getSpecialDateContext(date);
-  const record = {
+  const provisionalScore = clamp(baseRecord.score + monthContext.adjustment + specialDateContext.adjustment, -6, 9);
+  const provisionalRecord = {
     ...baseRecord,
     baseScore: baseRecord.score,
-    score: clamp(baseRecord.score + monthContext.adjustment + specialDateContext.adjustment, -6, 9),
+    score: provisionalScore,
     monthAdjustment: monthContext.adjustment,
     specialDateAdjustment: specialDateContext.adjustment
   };
+  const playStyle = getPlayStyle(provisionalRecord);
+  const record = {
+    ...provisionalRecord,
+    score: clamp(provisionalScore + playStyle.adjustment, -6, 9),
+    playStyleAdjustment: playStyle.adjustment
+  };
   const rating = getRating(record.score, record);
-  const playStyle = getPlayStyle(record);
   const weekdayContext = getWeekdayContext(date.getUTCDay());
   return {
     date,
