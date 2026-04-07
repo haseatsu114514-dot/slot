@@ -7,9 +7,16 @@ export const DEFAULT_CONFIG = Object.freeze({
   anchorKanshi: "辛亥",
   startMonth: "2026-04",
   monthCount: 3,
+  syncIntervalMs: 60000,
   spreadsheetUrl: "",
   syncEndpoint: "",
   syncSecret: ""
+});
+
+export const RATING_THRESHOLDS = Object.freeze({
+  specialMin: 8,
+  goMin: 6,
+  holdMin: 3
 });
 
 export const SEXAGENARY_CYCLE = Array.from(
@@ -245,13 +252,13 @@ export function applyEntriesToRecords(records, entries = []) {
 }
 
 export function getRating(score) {
-  if (score >= 7) {
+  if (score >= RATING_THRESHOLDS.specialMin) {
     return { label: "◎", tier: "special", text: "絶好の日" };
   }
-  if (score >= 5) {
+  if (score >= RATING_THRESHOLDS.goMin) {
     return { label: "○", tier: "go", text: "行くべき日" };
   }
-  if (score >= 2) {
+  if (score >= RATING_THRESHOLDS.holdMin) {
     return { label: "△", tier: "hold", text: "どちらでもよい日" };
   }
   return { label: "×", tier: "avoid", text: "見送り推奨" };
@@ -301,10 +308,10 @@ export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG
   }
 
   const stats = {
-    special: dayRows.filter((day) => day.record.score >= 7).length,
-    go: dayRows.filter((day) => day.record.score >= 5 && day.record.score < 7).length,
-    hold: dayRows.filter((day) => day.record.score >= 2 && day.record.score < 5).length,
-    avoid: dayRows.filter((day) => day.record.score < 2).length
+    special: dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin).length,
+    go: dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin && day.record.score < RATING_THRESHOLDS.specialMin).length,
+    hold: dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.holdMin && day.record.score < RATING_THRESHOLDS.goMin).length,
+    avoid: dayRows.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length
   };
 
   return {
