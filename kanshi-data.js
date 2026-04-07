@@ -59,6 +59,16 @@ export const MONTH_BRANCH_STATUS_MAP = Object.freeze({
   "卯": ["冲"]
 });
 
+export const WEEKDAY_EFFECTS = Object.freeze({
+  0: Object.freeze({ adjustment: -0.1, label: "日曜はやや逆風", shortLabel: "日曜弱め", tone: "caution" }),
+  1: Object.freeze({ adjustment: 0, label: "月曜は中立", shortLabel: "月曜中立", tone: "neutral" }),
+  2: Object.freeze({ adjustment: 0.3, label: "火曜はやや追い風", shortLabel: "火曜追い風", tone: "good" }),
+  3: Object.freeze({ adjustment: -0.5, label: "水曜は弱め", shortLabel: "水曜弱め", tone: "rough" }),
+  4: Object.freeze({ adjustment: 0.5, label: "木曜は強めの追い風", shortLabel: "木曜強め", tone: "good" }),
+  5: Object.freeze({ adjustment: 0.2, label: "金曜はやや追い風", shortLabel: "金曜追い風", tone: "good" }),
+  6: Object.freeze({ adjustment: 0, label: "土曜は荒れやすく中立", shortLabel: "土曜中立", tone: "neutral" })
+});
+
 export const SEXAGENARY_CYCLE = Array.from(
   { length: 60 },
   (_, index) => HEAVENLY_STEMS[index % 10] + EARTHLY_BRANCHES[index % 12]
@@ -289,6 +299,15 @@ export function getMonthContext(dateKey) {
   };
 }
 
+export function getWeekdayContext(weekday) {
+  return WEEKDAY_EFFECTS[weekday] || Object.freeze({
+    adjustment: 0,
+    label: "曜日補正なし",
+    shortLabel: "曜日中立",
+    tone: "neutral"
+  });
+}
+
 export function isPerfectRecord(record) {
   if (!record) return false;
   return record.score >= RATING_THRESHOLDS.perfectMin;
@@ -350,6 +369,58 @@ export function getRating(score, record = null) {
   return { label: "×", tier: "avoid", text: "見送り推奨" };
 }
 
+export function getPlayStyle(record) {
+  const tags = record?.tags || [];
+  const score = toNumberOrNull(record?.score, 0);
+  const avg = toNumberOrNull(record?.avg, null);
+  const days = toNumberOrNull(record?.days, 0);
+  const sendan = toNumberOrNull(record?.sendan, 0);
+  const spread = avg === null ? Math.abs(sendan) : Math.abs(avg - sendan);
+  const hasStableTag = tags.includes("安定型");
+  const hasActualGood = tags.some((tag) => tag.includes("実績◎"));
+  const hasActualBad = tags.some((tag) => tag.includes("実績×"));
+  const needsMoreData = tags.some((tag) => tag.includes("要検証") || tag.includes("データ無"));
+
+  if (days <= 0) {
+    return { label: "データ待ち", shortLabel: "未知", tone: "neutral", note: "まだ実績が少なく、傾向を判定しづらい日です。" };
+  }
+
+  if (
+    hasStableTag ||
+    (days >= 3 && avg !== null && avg >= 8000 && score >= RATING_THRESHOLDS.goMin && !hasActualBad) ||
+    (hasActualGood && days >= 2 && avg !== null && avg >= 12000 && score >= RATING_THRESHOLDS.goMin)
+  ) {
+    return { label: "勝ちやすい", shortLabel: "勝ち筋", tone: "good", note: "プラス実績が比較的安定していて、拾いやすい寄りです。" };
+  }
+
+  if (
+    score >= RATING_THRESHOLDS.goMin &&
+    (
+      ((days <= 2) && avg !== null && avg >= 10000) ||
+      spread >= 18000 ||
+      needsMoreData
+    )
+  ) {
+    return { label: "荒い", shortLabel: "荒れ筋", tone: "rough", note: "期待値は高い一方で、ブレ幅が大きめです。" };
+  }
+
+  if (
+    score >= RATING_THRESHOLDS.holdMin &&
+    avg !== null &&
+    avg >= 3000 &&
+    days >= 2 &&
+    !hasActualBad
+  ) {
+    return { label: "安定寄り", shortLabel: "安定", tone: "stable", note: "派手さは薄めでも、比較的まとまりやすいタイプです。" };
+  }
+
+  if (hasActualBad || (avg !== null && avg < 0) || score < RATING_THRESHOLDS.holdMin) {
+    return { label: "苦戦寄り", shortLabel: "苦戦", tone: "caution", note: "実績面ではマイナス寄りなので、慎重に見たい日です。" };
+  }
+
+  return { label: "様子見", shortLabel: "様子見", tone: "neutral", note: "大きな決め手はまだ薄く、補助情報とあわせて見たい日です。" };
+}
+
 export function formatYen(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "データ無";
   const number = Number(value);
@@ -369,6 +440,8 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     monthAdjustment: monthContext.adjustment
   };
   const rating = getRating(record.score, record);
+  const playStyle = getPlayStyle(record);
+  const weekdayContext = getWeekdayContext(date.getUTCDay());
   return {
     date,
     dateKey,
@@ -379,7 +452,9 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     kanshi,
     record,
     rating,
+    playStyle,
     monthContext,
+    weekdayContext,
     expectedValue: Math.round(blendExpected(record.avg, record.sendan, record.days))
   };
 }
