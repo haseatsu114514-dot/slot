@@ -10,8 +10,7 @@ import {
   getMonthSequence,
   getRating,
   getKanshiForDateKey,
-  RATING_THRESHOLDS,
-  blendExpected
+  RATING_THRESHOLDS
 } from "./kanshi-data.js";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
@@ -206,7 +205,9 @@ function renderUpcoming(upcomingDays) {
           <span class="upcoming-date">${day.month}/${day.day}(${weekday})</span>
           <strong class="upcoming-kanshi">${day.kanshi}</strong>
           <span class="upcoming-copy">${day.rating.label} ${day.rating.text}</span>
-          <span class="upcoming-meta">${day.record.ts || "通変星未設定"} / 実績平均 ${formatYen(day.record.avg)}</span>
+          <span class="upcoming-meta">
+            ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)}
+          </span>
         </button>
       `;
     })
@@ -218,7 +219,7 @@ function renderCalendar(months) {
     .map((month) => {
       const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
       const expectedTotal = Math.round(
-        targetDays.reduce((sum, day) => sum + blendExpected(day.record.avg, day.record.sendan, day.record.days), 0)
+        targetDays.reduce((sum, day) => sum + day.expectedValue, 0)
       );
       const statChips = [
         buildMonthStat("◎", month.stats.special, "special"),
@@ -252,8 +253,9 @@ function renderCalendar(months) {
             <div>
               <p class="month-kicker">${month.year}</p>
               <h3>${month.label}</h3>
+              <p class="month-pillar">月干支: ${month.monthPillarSummary}</p>
               <p class="month-expectation">
-                ○・◎だけ打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
+                ○・◎だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
               </p>
             </div>
             <div class="month-stats">${statChips}</div>
@@ -278,11 +280,17 @@ function renderSelectedDay() {
   const records = getComputedRecords();
   const day = buildDayInfo(state.selectedDateKey, records, CONFIG);
   const weekday = WEEKDAYS[day.weekday];
-  const scoreDelta = day.record.score - day.record.seedScore;
-  const deltaLabel = scoreDelta === 0 ? "元データどおり" : scoreDelta > 0 ? `入力反映で +${scoreDelta}` : `入力反映で ${scoreDelta}`;
-  const tags = day.record.tags.length
+  const liveDelta = day.record.baseScore - day.record.seedScore;
+  const liveDeltaLabel = liveDelta === 0 ? "入力反映なし" : liveDelta > 0 ? `入力反映で +${liveDelta}` : `入力反映で ${liveDelta}`;
+  const monthAdjustmentLabel = day.monthContext.adjustment === 0
+    ? "月補正なし"
+    : `月補正 ${day.monthContext.adjustment}`;
+  const monthTags = day.monthContext.statuses.length
+    ? day.monthContext.statuses.map((status) => `<span class="tag ${getMonthStatusClass(status)}">月${status} ${getScoreText(MONTH_STATUS_SCORE[status] ?? 0)}</span>`).join("")
+    : `<span class="tag">月補正なし</span>`;
+  const recordTags = day.record.tags.length
     ? day.record.tags.map((tag) => `<span class="tag ${getTagClass(tag)}">${tag}</span>`).join("")
-    : `<span class="tag">タグなし</span>`;
+    : "";
 
   refs.selectedDayPanel.innerHTML = `
     <div class="selected-top tier-${day.rating.tier}">
@@ -300,12 +308,17 @@ function renderSelectedDay() {
       <div class="selected-stat">
         <span>現在スコア</span>
         <strong>${day.record.score}</strong>
-        <small>${deltaLabel}</small>
+        <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel}</small>
       </div>
       <div class="selected-stat">
         <span>通変星</span>
         <strong>${day.record.ts || "-"}</strong>
-        <small>データ ${day.record.days} 日</small>
+        <small>${liveDeltaLabel}</small>
+      </div>
+      <div class="selected-stat">
+        <span>月干支</span>
+        <strong>${day.monthContext.kanshi || "-"}</strong>
+        <small>${day.monthContext.statuses.join(" / ") || "補正なし"}</small>
       </div>
       <div class="selected-stat">
         <span>実績平均</span>
@@ -319,15 +332,16 @@ function renderSelectedDay() {
       </div>
     </div>
 
-    <div class="tag-row">${tags}</div>
+    <div class="tag-row">${monthTags}${recordTags}</div>
     <p class="selected-note">
-      4月7日を「辛亥」として日ごとに六十干支を回しています。入力した成績は平均収支と暫定スコアに反映されます。
+      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。月の半空・真空・冲は月全体の補正として反映し、入力した成績は日基準スコアに反映されます。
     </p>
   `;
 }
 
 function renderRecentEntries() {
   const entries = getAllEntries();
+  const records = getComputedRecords();
 
   if (!entries.length) {
     refs.recentEntries.innerHTML = `<p class="empty-text">まだ成績入力はありません。</p>`;
@@ -337,7 +351,7 @@ function renderRecentEntries() {
   refs.recentEntries.innerHTML = entries
     .slice(0, 8)
     .map((entry) => {
-      const rating = getRating(entry.liveScore ?? 0);
+      const rating = buildDayInfo(entry.targetDate, records, CONFIG).rating;
       return `
         <article class="recent-entry">
           <div class="recent-entry-main">
@@ -395,16 +409,15 @@ function buildRankingItem(item) {
 
 function updateFormPreview() {
   const dateKey = refs.playDateInput.value || CONFIG.anchorDate;
-  const kanshi = getKanshiForDateKey(dateKey, CONFIG);
   const records = getComputedRecords();
-  const record = records[kanshi];
-  const rating = getRating(record.score);
+  const info = buildDayInfo(dateKey, records, CONFIG);
 
   refs.formPreview.innerHTML = `
-    <span class="preview-pill tier-${rating.tier}">${dateKey}</span>
-    <strong>${kanshi}</strong>
-    <span>${rating.label} ${rating.text}</span>
-    <span>現在スコア ${record.score}</span>
+    <span class="preview-pill tier-${info.rating.tier}">${dateKey}</span>
+    <strong>${info.kanshi}</strong>
+    <span>${info.rating.label} ${info.rating.text}</span>
+    <span>現在スコア ${info.record.score}</span>
+    <span>${buildMonthMeta(info.monthContext)}</span>
   `;
 }
 
@@ -413,6 +426,30 @@ function getTagClass(tag) {
   if (tag.includes("×") || tag.includes("※") || tag === "冲") return "is-alert";
   if (tag.includes("空亡")) return "is-void";
   return "";
+}
+
+const MONTH_STATUS_SCORE = Object.freeze({
+  "半空": -1,
+  "真空": -2,
+  "冲": -1
+});
+
+function buildMonthMeta(monthContext) {
+  if (!monthContext?.kanshi) return "月干支未設定";
+  if (!monthContext.statuses.length) return `月干支 ${monthContext.kanshi} / 補正なし`;
+  return `月干支 ${monthContext.kanshi} / ${monthContext.statuses.join("・")} ${getScoreText(monthContext.adjustment)}`;
+}
+
+function getMonthStatusClass(status) {
+  if (status === "真空" || status === "半空") return "is-void";
+  if (status === "冲") return "is-alert";
+  return "";
+}
+
+function getScoreText(score) {
+  if (score > 0) return `+${score}`;
+  if (score < 0) return `${score}`;
+  return "0";
 }
 
 async function hydrateRemoteDashboard(forceMessage = false) {
@@ -541,7 +578,7 @@ async function saveResult() {
 function addLocalEntry(entry) {
   const recordsBefore = getComputedRecords();
   const nextRecords = applyEntriesToRecords(recordsBefore, [entry]);
-  entry.liveScore = nextRecords[entry.kanshi]?.score ?? 0;
+  entry.liveScore = buildDayInfo(entry.targetDate, nextRecords, CONFIG).record.score;
   state.localEntries.unshift(entry);
   persistLocalEntries();
 }
