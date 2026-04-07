@@ -17,7 +17,7 @@
           <h1>打つべきか、打たないべきか</h1>
           <p class="hero-text">
             2026年4月7日を「辛亥」の基準日に固定し、4月から3か月分の六十干支カレンダーを表示します。
-            成績入力はローカル保存に加えて、Google Sheets と連携できる構成にしてあります。
+            成績入力は「1日の収支」で記録し、Google Sheets 連携時はページ再読み込みや自動同期で反映されます。
           </p>
         </div>
 
@@ -99,7 +99,7 @@
             <div class="panel-head">
               <div>
                 <p class="panel-kicker">Record Input</p>
-                <h2>成績を入力</h2>
+                <h2>1日の収支を入力</h2>
               </div>
             </div>
 
@@ -116,19 +116,9 @@
                 <input id="profitInput" name="profit" type="number" step="100" placeholder="例: 18500 / -32000" required>
               </label>
 
-              <label>
-                <span>店舗名</span>
-                <input id="storeInput" name="store" type="text" placeholder="任意">
-              </label>
-
-              <label>
-                <span>機種名</span>
-                <input id="machineInput" name="machine" type="text" placeholder="任意">
-              </label>
-
               <label class="form-wide">
                 <span>メモ</span>
-                <textarea id="memoInput" name="memo" rows="4" placeholder="立ち回りや状況のメモ"></textarea>
+                <textarea id="memoInput" name="memo" rows="4" placeholder="1日の内容や気づきのメモ"></textarea>
               </label>
 
               <div class="form-actions">
@@ -137,7 +127,7 @@
               </div>
 
               <p id="formStatus" class="form-status">
-                Google Sheets の Web アプリ URL を設定すると、保存時にシートにも追記されます。
+                Google Sheets の Web アプリ URL を設定すると、保存時にシートへ追記され、再読み込みや自動同期でも反映されます。
               </p>
             </form>
           </article>

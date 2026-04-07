@@ -284,6 +284,13 @@ a {
   font-family: "Zen Old Mincho", serif;
 }
 
+.month-expectation {
+  margin: 8px 0 0;
+  color: var(--gold-soft);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
 .month-stats {
   display: flex;
   flex-wrap: wrap;

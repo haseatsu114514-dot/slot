@@ -6,11 +6,12 @@ import {
   applyEntriesToRecords,
   buildCalendarMonth,
   buildDayInfo,
-  formatDateKey,
   formatYen,
   getMonthSequence,
   getRating,
-  getKanshiForDateKey
+  getKanshiForDateKey,
+  RATING_THRESHOLDS,
+  blendExpected
 } from "./kanshi-data.js";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
@@ -38,8 +39,6 @@ const refs = {
   resultForm: document.getElementById("resultForm"),
   playDateInput: document.getElementById("playDateInput"),
   profitInput: document.getElementById("profitInput"),
-  storeInput: document.getElementById("storeInput"),
-  machineInput: document.getElementById("machineInput"),
   memoInput: document.getElementById("memoInput"),
   formPreview: document.getElementById("formPreview"),
   formStatus: document.getElementById("formStatus"),
@@ -53,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
   wireEvents();
   render();
   hydrateRemoteDashboard();
+  startAutoSync();
 });
 
 function wireEvents() {
@@ -134,7 +134,7 @@ function getMonthModels(records) {
 function getUpcomingDays(months) {
   return months
     .flatMap((month) => month.dayRows)
-    .filter((day) => day.record.score >= 5)
+    .filter((day) => day.record.score >= RATING_THRESHOLDS.goMin)
     .sort((left, right) => left.dateKey.localeCompare(right.dateKey));
 }
 
@@ -142,10 +142,10 @@ function getSummary(months) {
   const allDays = months.flatMap((month) => month.dayRows);
   return {
     total: allDays.length,
-    special: allDays.filter((day) => day.record.score >= 7).length,
-    go: allDays.filter((day) => day.record.score >= 5 && day.record.score < 7).length,
-    hold: allDays.filter((day) => day.record.score >= 2 && day.record.score < 5).length,
-    avoid: allDays.filter((day) => day.record.score < 2).length
+    special: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin).length,
+    go: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin && day.record.score < RATING_THRESHOLDS.specialMin).length,
+    hold: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.holdMin && day.record.score < RATING_THRESHOLDS.goMin).length,
+    avoid: allDays.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length
   };
 }
 
@@ -174,10 +174,10 @@ function render() {
 function renderSummary(summary) {
   refs.summaryCards.innerHTML = [
     buildSummaryCard("日数", summary.total, "静的に3か月固定", "is-neutral"),
-    buildSummaryCard("◎ 絶好", summary.special, "スコア7以上", "is-special"),
-    buildSummaryCard("○ 行くべき", summary.go, "スコア5-6", "is-go"),
-    buildSummaryCard("△ どちらでも", summary.hold, "スコア2-4", "is-hold"),
-    buildSummaryCard("× 見送り", summary.avoid, "スコア1以下", "is-avoid")
+    buildSummaryCard("◎ 絶好", summary.special, "スコア8以上", "is-special"),
+    buildSummaryCard("○ 行くべき", summary.go, "スコア6-7", "is-go"),
+    buildSummaryCard("△ どちらでも", summary.hold, "スコア4-5", "is-hold"),
+    buildSummaryCard("× 見送り", summary.avoid, "スコア3以下", "is-avoid")
   ].join("");
 }
 
@@ -216,6 +216,10 @@ function renderUpcoming(upcomingDays) {
 function renderCalendar(months) {
   refs.calendarGrid.innerHTML = months
     .map((month) => {
+      const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
+      const expectedTotal = Math.round(
+        targetDays.reduce((sum, day) => sum + blendExpected(day.record.avg, day.record.sendan, day.record.days), 0)
+      );
       const statChips = [
         buildMonthStat("◎", month.stats.special, "special"),
         buildMonthStat("○", month.stats.go, "go"),
@@ -248,6 +252,9 @@ function renderCalendar(months) {
             <div>
               <p class="month-kicker">${month.year}</p>
               <h3>${month.label}</h3>
+              <p class="month-expectation">
+                ○・◎だけ打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
+              </p>
             </div>
             <div class="month-stats">${statChips}</div>
           </header>
@@ -339,8 +346,7 @@ function renderRecentEntries() {
             <span class="recent-entry-profit ${Number(entry.profit) >= 0 ? "is-plus" : "is-minus"}">${formatYen(entry.profit)}</span>
           </div>
           <div class="recent-entry-sub">
-            <span>${entry.store || "店舗未入力"}</span>
-            <span>${entry.machine || "機種未入力"}</span>
+            <span>1日の収支記録</span>
             <span class="recent-entry-rating tier-${rating.tier}">${rating.label} ${rating.text}</span>
           </div>
           ${entry.memo ? `<p class="recent-entry-note">${escapeHtml(entry.memo)}</p>` : ""}
@@ -444,7 +450,7 @@ async function hydrateRemoteDashboard(forceMessage = false) {
       mode: "online",
       message: "Google Sheets と同期しています。"
     };
-    setFormStatus("Google Sheets と同期しました。以後の入力はシートにも保存されます。", "success");
+    setFormStatus("Google Sheets と同期しました。シート側の更新は自動同期か再読み込みで反映されます。", "success");
   } catch (error) {
     state.sync = {
       mode: "error",
@@ -455,6 +461,24 @@ async function hydrateRemoteDashboard(forceMessage = false) {
     refs.retrySyncButton.disabled = false;
     render();
   }
+}
+
+function startAutoSync() {
+  if (!CONFIG.syncEndpoint) return;
+
+  window.setInterval(() => {
+    hydrateRemoteDashboard();
+  }, CONFIG.syncIntervalMs);
+
+  window.addEventListener("focus", () => {
+    hydrateRemoteDashboard();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      hydrateRemoteDashboard();
+    }
+  });
 }
 
 async function saveResult() {
@@ -477,8 +501,6 @@ async function saveResult() {
     targetDate,
     kanshi: getKanshiForDateKey(targetDate, CONFIG),
     profit,
-    store: String(formData.get("store") || "").trim(),
-    machine: String(formData.get("machine") || "").trim(),
     memo: String(formData.get("memo") || "").trim()
   };
 
