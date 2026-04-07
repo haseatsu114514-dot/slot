@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>打つべきかカレンダー</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Sexagenary Slot Calendar</p>
+          <h1>打つべきか、打たないべきか</h1>
+          <p class="hero-text">
+            2026年4月7日を「辛亥」の基準日に固定し、4月から3か月分の六十干支カレンダーを表示します。
+            成績入力はローカル保存に加えて、Google Sheets と連携できる構成にしてあります。
+          </p>
+        </div>
+
+        <div class="hero-meta">
+          <div class="hero-chip">
+            <span class="hero-chip-label">基準日</span>
+            <strong>2026/4/7 = 辛亥</strong>
+          </div>
+          <div class="hero-chip">
+            <span class="hero-chip-label">表示期間</span>
+            <strong>2026年4月 - 6月</strong>
+          </div>
+          <div class="hero-chip">
+            <span class="hero-chip-label">同期状態</span>
+            <strong id="syncBadgeText">ローカルモード</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <section class="overview-grid">
+          <article class="panel panel-stat">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">3 Months</p>
+                <h2>90日サマリー</h2>
+              </div>
+            </div>
+            <div id="summaryCards" class="summary-cards"></div>
+          </article>
+
+          <article class="panel panel-upcoming">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Upcoming</p>
+                <h2>直近の狙い目</h2>
+              </div>
+              <a
+                class="panel-link"
+                href="https://docs.google.com/spreadsheets/d/1EcqzzauwTSOPXo-Mx7S8U7iDsxYVgE2YarW3qR7krts/edit?gid=1420767271#gid=1420767271"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                元シートを見る
+              </a>
+            </div>
+            <div id="upcomingList" class="upcoming-list"></div>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Calendar</p>
+              <h2>3か月カレンダー</h2>
+            </div>
+            <div class="legend">
+              <span class="legend-item is-special">◎ 絶好</span>
+              <span class="legend-item is-go">○ 行くべき</span>
+              <span class="legend-item is-hold">△ どちらでも</span>
+              <span class="legend-item is-avoid">× 見送り</span>
+            </div>
+          </div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </section>
+
+        <section class="detail-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Selected Day</p>
+                <h2>選択中の日</h2>
+              </div>
+            </div>
+            <div id="selectedDayPanel" class="selected-day-panel"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Record Input</p>
+                <h2>成績を入力</h2>
+              </div>
+            </div>
+
+            <form id="resultForm" class="result-form">
+              <label>
+                <span>日付</span>
+                <input id="playDateInput" name="playDate" type="date" required>
+              </label>
+
+              <div class="form-preview" id="formPreview"></div>
+
+              <label>
+                <span>収支</span>
+                <input id="profitInput" name="profit" type="number" step="100" placeholder="例: 18500 / -32000" required>
+              </label>
+
+              <label>
+                <span>店舗名</span>
+                <input id="storeInput" name="store" type="text" placeholder="任意">
+              </label>
+
+              <label>
+                <span>機種名</span>
+                <input id="machineInput" name="machine" type="text" placeholder="任意">
+              </label>
+
+              <label class="form-wide">
+                <span>メモ</span>
+                <textarea id="memoInput" name="memo" rows="4" placeholder="立ち回りや状況のメモ"></textarea>
+              </label>
+
+              <div class="form-actions">
+                <button id="saveButton" class="primary-button" type="submit">成績を保存する</button>
+                <button id="retrySyncButton" class="secondary-button" type="button">Sheets同期を再試行</button>
+              </div>
+
+              <p id="formStatus" class="form-status">
+                Google Sheets の Web アプリ URL を設定すると、保存時にシートにも追記されます。
+              </p>
+            </form>
+          </article>
+        </section>
+
+        <section class="detail-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Recent Results</p>
+                <h2>最近の入力</h2>
+              </div>
+            </div>
+            <div id="recentEntries" class="recent-entries"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Ranking</p>
+                <h2>干支の現在地</h2>
+              </div>
+            </div>
+            <div id="rankingLists" class="ranking-lists"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      window.SLOT_APP_CONFIG = {
+        anchorDate: "2026-04-07",
+        anchorKanshi: "辛亥",
+        startMonth: "2026-04",
+        monthCount: 3,
+        spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1EcqzzauwTSOPXo-Mx7S8U7iDsxYVgE2YarW3qR7krts/edit?gid=1420767271#gid=1420767271",
+        syncEndpoint: "",
+        syncSecret: ""
+      };
+    </script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,574 @@
+import {
+  WEEKDAYS,
+  resolveConfig,
+  buildBaseRecords,
+  buildRecordsFromPayload,
+  applyEntriesToRecords,
+  buildCalendarMonth,
+  buildDayInfo,
+  formatDateKey,
+  formatYen,
+  getMonthSequence,
+  getRating,
+  getKanshiForDateKey
+} from "./kanshi-data.js";
+
+const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
+const STORAGE_KEY = "slot-kanshi-local-results-v1";
+
+const state = {
+  remoteRecords: null,
+  remoteEntries: [],
+  localEntries: loadLocalEntries(),
+  selectedDateKey: CONFIG.anchorDate,
+  sync: {
+    mode: CONFIG.syncEndpoint ? "loading" : "local",
+    message: CONFIG.syncEndpoint ? "Google Sheets に接続しています..." : "ローカルモードで動作中です。"
+  }
+};
+
+const refs = {
+  summaryCards: document.getElementById("summaryCards"),
+  upcomingList: document.getElementById("upcomingList"),
+  calendarGrid: document.getElementById("calendarGrid"),
+  selectedDayPanel: document.getElementById("selectedDayPanel"),
+  recentEntries: document.getElementById("recentEntries"),
+  rankingLists: document.getElementById("rankingLists"),
+  syncBadgeText: document.getElementById("syncBadgeText"),
+  resultForm: document.getElementById("resultForm"),
+  playDateInput: document.getElementById("playDateInput"),
+  profitInput: document.getElementById("profitInput"),
+  storeInput: document.getElementById("storeInput"),
+  machineInput: document.getElementById("machineInput"),
+  memoInput: document.getElementById("memoInput"),
+  formPreview: document.getElementById("formPreview"),
+  formStatus: document.getElementById("formStatus"),
+  retrySyncButton: document.getElementById("retrySyncButton"),
+  saveButton: document.getElementById("saveButton")
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  refs.playDateInput.value = state.selectedDateKey;
+  updateFormPreview();
+  wireEvents();
+  render();
+  hydrateRemoteDashboard();
+});
+
+function wireEvents() {
+  refs.calendarGrid.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-date-key]");
+    if (!button) return;
+    state.selectedDateKey = button.dataset.dateKey;
+    refs.playDateInput.value = state.selectedDateKey;
+    updateFormPreview();
+    render();
+  });
+
+  refs.upcomingList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-date-key]");
+    if (!button) return;
+    state.selectedDateKey = button.dataset.dateKey;
+    refs.playDateInput.value = state.selectedDateKey;
+    updateFormPreview();
+    render();
+  });
+
+  refs.playDateInput.addEventListener("input", () => {
+    state.selectedDateKey = refs.playDateInput.value || CONFIG.anchorDate;
+    updateFormPreview();
+    renderSelectedDay();
+  });
+
+  refs.resultForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await saveResult();
+  });
+
+  refs.retrySyncButton.addEventListener("click", async () => {
+    await hydrateRemoteDashboard(true);
+  });
+}
+
+function loadLocalEntries() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry) => entry && entry.targetDate && entry.kanshi);
+  } catch (error) {
+    return [];
+  }
+}
+
+function persistLocalEntries() {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.localEntries));
+}
+
+function getSeedRecords() {
+  return buildBaseRecords();
+}
+
+function getComputedRecords() {
+  const sourceRecords = state.remoteRecords || getSeedRecords();
+  return applyEntriesToRecords(sourceRecords, state.localEntries);
+}
+
+function getAllEntries() {
+  const merged = [...state.remoteEntries, ...state.localEntries];
+  return merged.sort((left, right) => {
+    if (left.targetDate !== right.targetDate) {
+      return left.targetDate < right.targetDate ? 1 : -1;
+    }
+    return (right.createdAt || "").localeCompare(left.createdAt || "");
+  });
+}
+
+function getMonthModels(records) {
+  return getMonthSequence(CONFIG.startMonth, CONFIG.monthCount).map(({ year, month }) =>
+    buildCalendarMonth(year, month, records, CONFIG)
+  );
+}
+
+function getUpcomingDays(months) {
+  return months
+    .flatMap((month) => month.dayRows)
+    .filter((day) => day.record.score >= 5)
+    .sort((left, right) => left.dateKey.localeCompare(right.dateKey));
+}
+
+function getSummary(months) {
+  const allDays = months.flatMap((month) => month.dayRows);
+  return {
+    total: allDays.length,
+    special: allDays.filter((day) => day.record.score >= 7).length,
+    go: allDays.filter((day) => day.record.score >= 5 && day.record.score < 7).length,
+    hold: allDays.filter((day) => day.record.score >= 2 && day.record.score < 5).length,
+    avoid: allDays.filter((day) => day.record.score < 2).length
+  };
+}
+
+function getSyncLabel() {
+  if (state.sync.mode === "online") return "Google Sheets 同期中";
+  if (state.sync.mode === "loading") return "Sheets 接続中";
+  if (state.sync.mode === "error") return "同期失敗 / ローカル保存";
+  return "ローカルモード";
+}
+
+function render() {
+  const records = getComputedRecords();
+  const months = getMonthModels(records);
+  const summary = getSummary(months);
+  const upcomingDays = getUpcomingDays(months);
+
+  refs.syncBadgeText.textContent = getSyncLabel();
+  renderSummary(summary);
+  renderUpcoming(upcomingDays);
+  renderCalendar(months);
+  renderSelectedDay();
+  renderRecentEntries();
+  renderRankings(records);
+}
+
+function renderSummary(summary) {
+  refs.summaryCards.innerHTML = [
+    buildSummaryCard("日数", summary.total, "静的に3か月固定", "is-neutral"),
+    buildSummaryCard("◎ 絶好", summary.special, "スコア7以上", "is-special"),
+    buildSummaryCard("○ 行くべき", summary.go, "スコア5-6", "is-go"),
+    buildSummaryCard("△ どちらでも", summary.hold, "スコア2-4", "is-hold"),
+    buildSummaryCard("× 見送り", summary.avoid, "スコア1以下", "is-avoid")
+  ].join("");
+}
+
+function buildSummaryCard(label, value, note, className) {
+  return `
+    <div class="summary-card ${className}">
+      <span class="summary-label">${label}</span>
+      <strong class="summary-value">${value}</strong>
+      <span class="summary-note">${note}</span>
+    </div>
+  `;
+}
+
+function renderUpcoming(upcomingDays) {
+  if (!upcomingDays.length) {
+    refs.upcomingList.innerHTML = `<p class="empty-text">この期間に「行くべき」日はありません。</p>`;
+    return;
+  }
+
+  refs.upcomingList.innerHTML = upcomingDays
+    .slice(0, 12)
+    .map((day) => {
+      const weekday = WEEKDAYS[day.weekday];
+      return `
+        <button class="upcoming-item tier-${day.rating.tier}" type="button" data-date-key="${day.dateKey}">
+          <span class="upcoming-date">${day.month}/${day.day}(${weekday})</span>
+          <strong class="upcoming-kanshi">${day.kanshi}</strong>
+          <span class="upcoming-copy">${day.rating.label} ${day.rating.text}</span>
+          <span class="upcoming-meta">${day.record.ts || "通変星未設定"} / 実績平均 ${formatYen(day.record.avg)}</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderCalendar(months) {
+  refs.calendarGrid.innerHTML = months
+    .map((month) => {
+      const statChips = [
+        buildMonthStat("◎", month.stats.special, "special"),
+        buildMonthStat("○", month.stats.go, "go"),
+        buildMonthStat("△", month.stats.hold, "hold"),
+        buildMonthStat("×", month.stats.avoid, "avoid")
+      ].join("");
+
+      const dayCells = month.cells
+        .map((day) => {
+          if (!day) return `<div class="day-spacer"></div>`;
+          const selectedClass = day.dateKey === state.selectedDateKey ? "is-selected" : "";
+          return `
+            <button
+              class="day-card tier-${day.rating.tier} ${selectedClass}"
+              type="button"
+              data-date-key="${day.dateKey}"
+            >
+              <span class="day-number">${day.day}</span>
+              <strong class="day-rating">${day.rating.label}</strong>
+              <span class="day-kanshi">${day.kanshi}</span>
+              <span class="day-ts">${day.record.ts || "通変星なし"}</span>
+            </button>
+          `;
+        })
+        .join("");
+
+      return `
+        <article class="month-card">
+          <header class="month-header">
+            <div>
+              <p class="month-kicker">${month.year}</p>
+              <h3>${month.label}</h3>
+            </div>
+            <div class="month-stats">${statChips}</div>
+          </header>
+          <div class="weekday-row">
+            ${WEEKDAYS.map((weekday, index) => `<span class="weekday weekday-${index}">${weekday}</span>`).join("")}
+          </div>
+          <div class="month-day-grid">
+            ${dayCells}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function buildMonthStat(label, value, tier) {
+  return `<span class="month-stat tier-${tier}">${label} ${value}</span>`;
+}
+
+function renderSelectedDay() {
+  const records = getComputedRecords();
+  const day = buildDayInfo(state.selectedDateKey, records, CONFIG);
+  const weekday = WEEKDAYS[day.weekday];
+  const scoreDelta = day.record.score - day.record.seedScore;
+  const deltaLabel = scoreDelta === 0 ? "元データどおり" : scoreDelta > 0 ? `入力反映で +${scoreDelta}` : `入力反映で ${scoreDelta}`;
+  const tags = day.record.tags.length
+    ? day.record.tags.map((tag) => `<span class="tag ${getTagClass(tag)}">${tag}</span>`).join("")
+    : `<span class="tag">タグなし</span>`;
+
+  refs.selectedDayPanel.innerHTML = `
+    <div class="selected-top tier-${day.rating.tier}">
+      <div>
+        <p class="selected-date">${day.year}/${day.month}/${day.day} (${weekday})</p>
+        <h3>${day.kanshi}</h3>
+      </div>
+      <div class="selected-badge">
+        <span>${day.rating.label}</span>
+        <strong>${day.rating.text}</strong>
+      </div>
+    </div>
+
+    <div class="selected-stats">
+      <div class="selected-stat">
+        <span>現在スコア</span>
+        <strong>${day.record.score}</strong>
+        <small>${deltaLabel}</small>
+      </div>
+      <div class="selected-stat">
+        <span>通変星</span>
+        <strong>${day.record.ts || "-"}</strong>
+        <small>データ ${day.record.days} 日</small>
+      </div>
+      <div class="selected-stat">
+        <span>実績平均</span>
+        <strong>${formatYen(day.record.avg)}</strong>
+        <small>初期値 ${formatYen(day.record.seedAvg)}</small>
+      </div>
+      <div class="selected-stat">
+        <span>占断予想</span>
+        <strong>${formatYen(day.record.sendan)}</strong>
+        <small>元シート由来の参考値</small>
+      </div>
+    </div>
+
+    <div class="tag-row">${tags}</div>
+    <p class="selected-note">
+      4月7日を「辛亥」として日ごとに六十干支を回しています。入力した成績は平均収支と暫定スコアに反映されます。
+    </p>
+  `;
+}
+
+function renderRecentEntries() {
+  const entries = getAllEntries();
+
+  if (!entries.length) {
+    refs.recentEntries.innerHTML = `<p class="empty-text">まだ成績入力はありません。</p>`;
+    return;
+  }
+
+  refs.recentEntries.innerHTML = entries
+    .slice(0, 8)
+    .map((entry) => {
+      const rating = getRating(entry.liveScore ?? 0);
+      return `
+        <article class="recent-entry">
+          <div class="recent-entry-main">
+            <div class="recent-entry-date">${entry.targetDate}</div>
+            <strong>${entry.kanshi}</strong>
+            <span class="recent-entry-profit ${Number(entry.profit) >= 0 ? "is-plus" : "is-minus"}">${formatYen(entry.profit)}</span>
+          </div>
+          <div class="recent-entry-sub">
+            <span>${entry.store || "店舗未入力"}</span>
+            <span>${entry.machine || "機種未入力"}</span>
+            <span class="recent-entry-rating tier-${rating.tier}">${rating.label} ${rating.text}</span>
+          </div>
+          ${entry.memo ? `<p class="recent-entry-note">${escapeHtml(entry.memo)}</p>` : ""}
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderRankings(records) {
+  const ranked = Object.values(records).sort((left, right) => {
+    if (left.score !== right.score) return right.score - left.score;
+    return (right.avg || -Infinity) - (left.avg || -Infinity);
+  });
+
+  const top = ranked.slice(0, 8);
+  const bottom = [...ranked].reverse().slice(0, 8);
+
+  refs.rankingLists.innerHTML = `
+    <div class="ranking-block">
+      <h3>上位 8干支</h3>
+      ${top.map((item) => buildRankingItem(item)).join("")}
+    </div>
+    <div class="ranking-block">
+      <h3>見送り寄り 8干支</h3>
+      ${bottom.map((item) => buildRankingItem(item)).join("")}
+    </div>
+  `;
+}
+
+function buildRankingItem(item) {
+  const rating = getRating(item.score);
+  return `
+    <article class="ranking-item tier-${rating.tier}">
+      <div>
+        <strong>${item.name}</strong>
+        <span>${item.ts || "-"}</span>
+      </div>
+      <div class="ranking-metrics">
+        <span>${rating.label} ${item.score}</span>
+        <span>${formatYen(item.avg)}</span>
+      </div>
+    </article>
+  `;
+}
+
+function updateFormPreview() {
+  const dateKey = refs.playDateInput.value || CONFIG.anchorDate;
+  const kanshi = getKanshiForDateKey(dateKey, CONFIG);
+  const records = getComputedRecords();
+  const record = records[kanshi];
+  const rating = getRating(record.score);
+
+  refs.formPreview.innerHTML = `
+    <span class="preview-pill tier-${rating.tier}">${dateKey}</span>
+    <strong>${kanshi}</strong>
+    <span>${rating.label} ${rating.text}</span>
+    <span>現在スコア ${record.score}</span>
+  `;
+}
+
+function getTagClass(tag) {
+  if (tag.includes("◎") || tag === "安定型") return "is-good";
+  if (tag.includes("×") || tag.includes("※") || tag === "冲") return "is-alert";
+  if (tag.includes("空亡")) return "is-void";
+  return "";
+}
+
+async function hydrateRemoteDashboard(forceMessage = false) {
+  if (!CONFIG.syncEndpoint) {
+    if (forceMessage) {
+      setFormStatus("Google Sheets の Web アプリ URL が未設定です。今はローカル保存のみです。", "info");
+    }
+    return;
+  }
+
+  state.sync = {
+    mode: "loading",
+    message: "Google Sheets に接続しています..."
+  };
+  refs.retrySyncButton.disabled = true;
+  render();
+
+  try {
+    const url = new URL(CONFIG.syncEndpoint);
+    url.searchParams.set("action", "dashboard");
+    if (CONFIG.syncSecret) url.searchParams.set("secret", CONFIG.syncSecret);
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" }
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "dashboard fetch failed");
+    }
+
+    state.remoteRecords = buildRecordsFromPayload(payload.records || {});
+    state.remoteEntries = Array.isArray(payload.entries) ? payload.entries : [];
+    state.sync = {
+      mode: "online",
+      message: "Google Sheets と同期しています。"
+    };
+    setFormStatus("Google Sheets と同期しました。以後の入力はシートにも保存されます。", "success");
+  } catch (error) {
+    state.sync = {
+      mode: "error",
+      message: "Google Sheets の同期に失敗しました。"
+    };
+    setFormStatus("Sheets 同期に失敗したため、いったんローカル保存で継続します。", "warn");
+  } finally {
+    refs.retrySyncButton.disabled = false;
+    render();
+  }
+}
+
+async function saveResult() {
+  const formData = new FormData(refs.resultForm);
+  const targetDate = String(formData.get("playDate") || "").trim();
+  const profit = Number(formData.get("profit"));
+
+  if (!targetDate) {
+    setFormStatus("日付を入力してください。", "warn");
+    return;
+  }
+  if (!Number.isFinite(profit)) {
+    setFormStatus("収支は数字で入力してください。", "warn");
+    return;
+  }
+
+  const entry = {
+    id: createEntryId(),
+    createdAt: new Date().toISOString(),
+    targetDate,
+    kanshi: getKanshiForDateKey(targetDate, CONFIG),
+    profit,
+    store: String(formData.get("store") || "").trim(),
+    machine: String(formData.get("machine") || "").trim(),
+    memo: String(formData.get("memo") || "").trim()
+  };
+
+  refs.saveButton.disabled = true;
+  state.selectedDateKey = targetDate;
+
+  try {
+    if (CONFIG.syncEndpoint) {
+      const synced = await postEntryToSheets(entry);
+      if (synced) {
+        refs.resultForm.reset();
+        refs.playDateInput.value = targetDate;
+        updateFormPreview();
+        setFormStatus("Google Sheets に保存し、カレンダーにも反映しました。", "success");
+        render();
+        return;
+      }
+    }
+
+    addLocalEntry(entry);
+    refs.resultForm.reset();
+    refs.playDateInput.value = targetDate;
+    updateFormPreview();
+    setFormStatus("ローカル保存しました。同期 URL を設定するとシートにも反映されます。", "info");
+    render();
+  } catch (error) {
+    addLocalEntry(entry);
+    refs.resultForm.reset();
+    refs.playDateInput.value = targetDate;
+    updateFormPreview();
+    setFormStatus("通信に失敗したためローカル保存しました。後で同期を再試行できます。", "warn");
+    render();
+  } finally {
+    refs.saveButton.disabled = false;
+  }
+}
+
+function addLocalEntry(entry) {
+  const recordsBefore = getComputedRecords();
+  const nextRecords = applyEntriesToRecords(recordsBefore, [entry]);
+  entry.liveScore = nextRecords[entry.kanshi]?.score ?? 0;
+  state.localEntries.unshift(entry);
+  persistLocalEntries();
+}
+
+async function postEntryToSheets(entry) {
+  const response = await fetch(CONFIG.syncEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    },
+    body: JSON.stringify({
+      action: "addResult",
+      secret: CONFIG.syncSecret || "",
+      entry
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error || "save failed");
+  }
+
+  state.remoteRecords = buildRecordsFromPayload(payload.records || {});
+  state.remoteEntries = Array.isArray(payload.entries) ? payload.entries : [];
+  state.sync = {
+    mode: "online",
+    message: "Google Sheets と同期しています。"
+  };
+  return true;
+}
+
+function setFormStatus(message, tone = "info") {
+  refs.formStatus.textContent = message;
+  refs.formStatus.dataset.tone = tone;
+}
+
+function createEntryId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
