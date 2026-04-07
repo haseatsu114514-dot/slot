@@ -220,7 +220,7 @@ function renderUpcoming(upcomingDays) {
 function renderCalendar(months) {
   refs.calendarGrid.innerHTML = months
     .map((month) => {
-      const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin);
+      const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
       const expectedTotal = Math.round(
         targetDays.reduce((sum, day) => sum + day.expectedValue, 0)
       );
@@ -259,7 +259,7 @@ function renderCalendar(months) {
               <h3>${month.label}</h3>
               <p class="month-pillar">月干支: ${month.monthPillarSummary}</p>
               <p class="month-expectation">
-                ★・◎だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
+                ★・◎・○だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
               </p>
             </div>
             <div class="month-stats">${statChips}</div>
