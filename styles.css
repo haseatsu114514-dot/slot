@@ -332,11 +332,11 @@ a {
 }
 
 .day-spacer {
-  min-height: 96px;
+  min-height: 112px;
 }
 
 .day-card {
-  min-height: 96px;
+  min-height: 112px;
   padding: 10px 8px 8px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -377,6 +377,14 @@ a {
 .day-ts {
   font-size: 0.62rem;
   color: var(--muted);
+}
+
+.day-style {
+  margin-top: 2px;
+  font-size: 0.58rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .selected-day-panel {
@@ -456,6 +464,12 @@ a {
   background: rgba(65, 201, 131, 0.13);
 }
 
+.tag.is-stable,
+.is-stable {
+  color: #8fd4ff;
+  background: rgba(92, 166, 255, 0.16);
+}
+
 .tier-perfect,
 .is-perfect {
   color: var(--gold-soft);
@@ -472,6 +486,18 @@ a {
 .is-avoid {
   color: var(--avoid);
   background: rgba(222, 106, 99, 0.13);
+}
+
+.tag.is-rough,
+.is-rough {
+  color: #ff9f8f;
+  background: rgba(201, 98, 63, 0.18);
+}
+
+.tag.is-caution,
+.is-caution {
+  color: #efc472;
+  background: rgba(231, 185, 76, 0.16);
 }
 
 .tier-go,
@@ -623,6 +649,12 @@ a {
   line-height: 1.7;
 }
 
+.mini-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .ranking-lists {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -642,6 +674,10 @@ a {
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 10px;
+  align-items: stretch;
+  justify-content: initial;
 }
 
 .empty-text {
@@ -696,6 +732,6 @@ a {
 
   .day-spacer,
   .day-card {
-    min-height: 84px;
+    min-height: 104px;
   }
 }

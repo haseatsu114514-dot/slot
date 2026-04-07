@@ -8,6 +8,7 @@ import {
   buildDayInfo,
   formatYen,
   getMonthSequence,
+  getPlayStyle,
   getRating,
   getKanshiForDateKey,
   RATING_THRESHOLDS,
@@ -211,6 +212,10 @@ function renderUpcoming(upcomingDays) {
           <span class="upcoming-meta">
             ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)}
           </span>
+          <span class="mini-tag-row">
+            ${buildStatusChip(day.playStyle.label, day.playStyle.tone)}
+            ${buildWeekdayChip(day.weekday, day.weekdayContext)}
+          </span>
         </button>
       `;
     })
@@ -246,6 +251,7 @@ function renderCalendar(months) {
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
+              <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
             </button>
           `;
         })
@@ -295,6 +301,8 @@ function renderSelectedDay() {
   const recordTags = day.record.tags.length
     ? day.record.tags.map((tag) => `<span class="tag ${getTagClass(tag)}">${tag}</span>`).join("")
     : "";
+  const qualityChip = buildStatusChip(`質感 ${day.playStyle.label}`, day.playStyle.tone);
+  const weekdayChip = buildWeekdayChip(day.weekday, day.weekdayContext);
 
   refs.selectedDayPanel.innerHTML = `
     <div class="selected-top tier-${day.rating.tier}">
@@ -325,6 +333,16 @@ function renderSelectedDay() {
         <small>${day.monthContext.statuses.join(" / ") || "補正なし"}</small>
       </div>
       <div class="selected-stat">
+        <span>質感ステータス</span>
+        <strong>${day.playStyle.label}</strong>
+        <small>${day.playStyle.note}</small>
+      </div>
+      <div class="selected-stat">
+        <span>曜日補助</span>
+        <strong>${weekday}曜 ${getScoreText(day.weekdayContext.adjustment)}</strong>
+        <small>${day.weekdayContext.label}</small>
+      </div>
+      <div class="selected-stat">
         <span>実績平均</span>
         <strong>${formatYen(day.record.avg)}</strong>
         <small>初期値 ${formatYen(day.record.seedAvg)}</small>
@@ -336,9 +354,9 @@ function renderSelectedDay() {
       </div>
     </div>
 
-    <div class="tag-row">${monthTags}${recordTags}</div>
+    <div class="tag-row">${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
     <p class="selected-note">
-      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。
+      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。曜日は店傾向も混ざるため、主判定を壊さない弱い補助ステータスとして表示しています。
     </p>
   `;
 }
@@ -355,7 +373,8 @@ function renderRecentEntries() {
   refs.recentEntries.innerHTML = entries
     .slice(0, 8)
     .map((entry) => {
-      const rating = buildDayInfo(entry.targetDate, records, CONFIG).rating;
+      const info = buildDayInfo(entry.targetDate, records, CONFIG);
+      const rating = info.rating;
       return `
         <article class="recent-entry">
           <div class="recent-entry-main">
@@ -366,6 +385,10 @@ function renderRecentEntries() {
           <div class="recent-entry-sub">
             <span>1日の収支記録</span>
             <span class="recent-entry-rating tier-${rating.tier}">${rating.label} ${rating.text}</span>
+          </div>
+          <div class="mini-tag-row">
+            ${buildStatusChip(info.playStyle.label, info.playStyle.tone)}
+            ${buildWeekdayChip(info.weekday, info.weekdayContext)}
           </div>
           ${entry.memo ? `<p class="recent-entry-note">${escapeHtml(entry.memo)}</p>` : ""}
         </article>
@@ -397,6 +420,7 @@ function renderRankings(records) {
 
 function buildRankingItem(item) {
   const rating = getRating(item.score, item);
+  const playStyle = getPlayStyle(item);
   return `
     <article class="ranking-item tier-${rating.tier}">
       <div>
@@ -406,6 +430,9 @@ function buildRankingItem(item) {
       <div class="ranking-metrics">
         <span>${rating.label} ${item.score}</span>
         <span>${formatYen(item.avg)}</span>
+      </div>
+      <div class="mini-tag-row">
+        ${buildStatusChip(playStyle.label, playStyle.tone)}
       </div>
     </article>
   `;
@@ -421,6 +448,8 @@ function updateFormPreview() {
     <strong>${info.kanshi}</strong>
     <span>${info.rating.label} ${info.rating.text}</span>
     <span>現在スコア ${info.record.score}</span>
+    <span>${info.playStyle.label}</span>
+    <span>${info.weekdayContext.shortLabel} ${getScoreText(info.weekdayContext.adjustment)}</span>
     <span>${buildMonthMeta(info.monthContext)}</span>
   `;
 }
@@ -450,9 +479,28 @@ function getMonthStatusClass(status) {
   return "";
 }
 
+function getToneClass(tone) {
+  if (tone === "good") return "is-good";
+  if (tone === "stable") return "is-stable";
+  if (tone === "rough") return "is-rough";
+  if (tone === "caution") return "is-caution";
+  return "is-neutral";
+}
+
+function buildStatusChip(label, tone) {
+  return `<span class="tag ${getToneClass(tone)}">${label}</span>`;
+}
+
+function buildWeekdayChip(weekday, weekdayContext) {
+  return `<span class="tag ${getToneClass(weekdayContext.tone)}">${weekdayContext.shortLabel} ${getScoreText(weekdayContext.adjustment)}</span>`;
+}
+
 function getScoreText(score) {
-  if (score > 0) return `+${score}`;
-  if (score < 0) return `${score}`;
+  if (!Number.isFinite(Number(score))) return "0";
+  const numericScore = Number(score);
+  const text = Number.isInteger(numericScore) ? String(numericScore) : numericScore.toFixed(1);
+  if (numericScore > 0) return `+${text}`;
+  if (numericScore < 0) return text;
   return "0";
 }
 
