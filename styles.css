@@ -187,6 +187,10 @@ a {
   background: rgba(65, 201, 131, 0.12);
 }
 
+.summary-card.is-perfect {
+  background: rgba(221, 187, 114, 0.16);
+}
+
 .summary-card.is-go {
   background: rgba(143, 210, 109, 0.12);
 }
@@ -450,6 +454,12 @@ a {
 .is-special {
   color: var(--special);
   background: rgba(65, 201, 131, 0.13);
+}
+
+.tier-perfect,
+.is-perfect {
+  color: var(--gold-soft);
+  background: rgba(221, 187, 114, 0.18);
 }
 
 .tag.is-void {
