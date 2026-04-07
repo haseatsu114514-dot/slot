@@ -69,6 +69,10 @@ export const WEEKDAY_EFFECTS = Object.freeze({
   6: Object.freeze({ adjustment: 0, label: "土曜は荒れやすく中立", shortLabel: "土曜中立", tone: "neutral" })
 });
 
+export const SPECIAL_DATE_EFFECTS = Object.freeze({
+  "年金注意": -1
+});
+
 export const SEXAGENARY_CYCLE = Array.from(
   { length: 60 },
   (_, index) => HEAVENLY_STEMS[index % 10] + EARTHLY_BRANCHES[index % 12]
@@ -308,6 +312,22 @@ export function getWeekdayContext(weekday) {
   });
 }
 
+export function getSpecialDateContext(date) {
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const isPensionPayday = month % 2 === 0 && day === 15;
+  const statuses = isPensionPayday ? ["年金注意"] : [];
+  const adjustment = statuses.reduce((sum, status) => sum + (SPECIAL_DATE_EFFECTS[status] || 0), 0);
+
+  return {
+    statuses,
+    adjustment,
+    label: isPensionPayday ? "年金支給日で危ないかも" : "日付補正なし",
+    shortLabel: isPensionPayday ? "年金注意" : "補正なし",
+    tone: isPensionPayday ? "caution" : "neutral"
+  };
+}
+
 export function isPerfectRecord(record) {
   if (!record) return false;
   return record.score >= RATING_THRESHOLDS.perfectMin;
@@ -433,11 +453,13 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const kanshi = getKanshiForDateKey(dateKey, config);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
   const monthContext = getMonthContext(dateKey);
+  const specialDateContext = getSpecialDateContext(date);
   const record = {
     ...baseRecord,
     baseScore: baseRecord.score,
-    score: clamp(baseRecord.score + monthContext.adjustment, -6, 9),
-    monthAdjustment: monthContext.adjustment
+    score: clamp(baseRecord.score + monthContext.adjustment + specialDateContext.adjustment, -6, 9),
+    monthAdjustment: monthContext.adjustment,
+    specialDateAdjustment: specialDateContext.adjustment
   };
   const rating = getRating(record.score, record);
   const playStyle = getPlayStyle(record);
@@ -454,6 +476,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     rating,
     playStyle,
     monthContext,
+    specialDateContext,
     weekdayContext,
     expectedValue: Math.round(blendExpected(record.avg, record.sendan, record.days))
   };

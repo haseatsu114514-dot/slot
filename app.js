@@ -213,6 +213,7 @@ function renderUpcoming(upcomingDays) {
             ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)}
           </span>
           <span class="mini-tag-row">
+            ${day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : ""}
             ${buildStatusChip(day.playStyle.label, day.playStyle.tone)}
             ${buildWeekdayChip(day.weekday, day.weekdayContext)}
           </span>
@@ -247,6 +248,7 @@ function renderCalendar(months) {
               type="button"
               data-date-key="${day.dateKey}"
             >
+              ${day.specialDateContext.statuses.length ? `<span class="day-marker is-caution">!</span>` : ""}
               <span class="day-number">${day.day}</span>
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
@@ -295,6 +297,9 @@ function renderSelectedDay() {
   const monthAdjustmentLabel = day.monthContext.adjustment === 0
     ? "月補正なし"
     : `月補正 ${day.monthContext.adjustment}`;
+  const specialDateAdjustmentLabel = day.specialDateContext.adjustment === 0
+    ? "日付補正なし"
+    : `日付補正 ${day.specialDateContext.adjustment}`;
   const monthTags = day.monthContext.statuses.length
     ? day.monthContext.statuses.map((status) => `<span class="tag ${getMonthStatusClass(status)}">月${status} ${getScoreText(MONTH_STATUS_SCORE[status] ?? 0)}</span>`).join("")
     : `<span class="tag">月補正なし</span>`;
@@ -303,6 +308,7 @@ function renderSelectedDay() {
     : "";
   const qualityChip = buildStatusChip(`質感 ${day.playStyle.label}`, day.playStyle.tone);
   const weekdayChip = buildWeekdayChip(day.weekday, day.weekdayContext);
+  const specialDateChip = day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "";
 
   refs.selectedDayPanel.innerHTML = `
     <div class="selected-top tier-${day.rating.tier}">
@@ -320,7 +326,7 @@ function renderSelectedDay() {
       <div class="selected-stat">
         <span>現在スコア</span>
         <strong>${day.record.score}</strong>
-        <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel}</small>
+        <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel}</small>
       </div>
       <div class="selected-stat">
         <span>通変星</span>
@@ -354,9 +360,9 @@ function renderSelectedDay() {
       </div>
     </div>
 
-    <div class="tag-row">${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
+    <div class="tag-row">${specialDateChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
     <p class="selected-note">
-      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。曜日は店傾向も混ざるため、主判定を壊さない弱い補助ステータスとして表示しています。
+      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。偶数月15日は年金支給日の注意日として `-1` を入れています。曜日は店傾向も混ざるため、主判定を壊さない弱い補助ステータスとして表示しています。
     </p>
   `;
 }
@@ -387,6 +393,7 @@ function renderRecentEntries() {
             <span class="recent-entry-rating tier-${rating.tier}">${rating.label} ${rating.text}</span>
           </div>
           <div class="mini-tag-row">
+            ${info.specialDateContext.statuses.length ? buildSpecialDateChip(info.specialDateContext) : ""}
             ${buildStatusChip(info.playStyle.label, info.playStyle.tone)}
             ${buildWeekdayChip(info.weekday, info.weekdayContext)}
           </div>
@@ -477,6 +484,10 @@ function getMonthStatusClass(status) {
   if (status === "真空" || status === "半空") return "is-void";
   if (status === "冲") return "is-alert";
   return "";
+}
+
+function buildSpecialDateChip(specialDateContext) {
+  return `<span class="tag ${getToneClass(specialDateContext.tone)}">${specialDateContext.label} ${getScoreText(specialDateContext.adjustment)}</span>`;
 }
 
 function getToneClass(tone) {
