@@ -48,7 +48,7 @@ export const MONTH_PILLAR_TRANSITIONS = Object.freeze(
 );
 
 export const MONTH_STATUS_EFFECTS = Object.freeze({
-  "半空": -1,
+  "半空": -0.5,
   "真空": -2,
   "冲": -1
 });
@@ -441,6 +441,40 @@ export function getPlayStyle(record) {
   return { label: "読みにくい", shortLabel: "読みにくい", tone: "neutral", note: "大きな決め手がまだ薄く、補助情報とあわせて見たい日です。", adjustment: 0 };
 }
 
+export function getOpportunityStatus(record) {
+  const tags = record?.tags || [];
+  const baseScore = toNumberOrNull(record?.baseScore, toNumberOrNull(record?.score, 0));
+  const avg = toNumberOrNull(record?.avg, null);
+  const days = toNumberOrNull(record?.days, 0);
+  const sendan = toNumberOrNull(record?.sendan, 0);
+  const hasActualGood = tags.some((tag) => tag.includes("実績◎"));
+  const actualLead = avg === null ? 0 : avg - sendan;
+
+  if (
+    avg !== null &&
+    days >= 2 &&
+    avg >= 10000 &&
+    baseScore < RATING_THRESHOLDS.specialMin &&
+    (hasActualGood || actualLead >= 4000)
+  ) {
+    return {
+      active: true,
+      label: "穴場かも",
+      shortLabel: "穴場",
+      tone: "opportunity",
+      note: "実績の伸びに対して、総合スコアがまだ控えめな狙い目候補です。"
+    };
+  }
+
+  return {
+    active: false,
+    label: "",
+    shortLabel: "",
+    tone: "neutral",
+    note: ""
+  };
+}
+
 export function formatYen(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "データ無";
   const number = Number(value);
@@ -454,6 +488,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
   const monthContext = getMonthContext(dateKey);
   const specialDateContext = getSpecialDateContext(date);
+  const opportunity = getOpportunityStatus(baseRecord);
   const provisionalScore = clamp(baseRecord.score + monthContext.adjustment + specialDateContext.adjustment, -6, 9);
   const provisionalRecord = {
     ...baseRecord,
@@ -481,6 +516,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     record,
     rating,
     playStyle,
+    opportunity,
     monthContext,
     specialDateContext,
     weekdayContext,

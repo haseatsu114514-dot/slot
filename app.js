@@ -7,6 +7,7 @@ import {
   buildCalendarMonth,
   buildDayInfo,
   formatYen,
+  getOpportunityStatus,
   getMonthSequence,
   getPlayStyle,
   getRating,
@@ -78,13 +79,23 @@ function wireEvents() {
 
   refs.calendarGrid.addEventListener("mouseover", (event) => {
     const button = event.target.closest("[data-date-key]");
-    if (!button || !refs.calendarGrid.contains(button)) return;
+    if (!button || !refs.calendarGrid.contains(button)) {
+      hideDayHoverCard();
+      return;
+    }
     showDayHoverCard(button.dataset.dateKey, button);
   });
 
   refs.calendarGrid.addEventListener("mousemove", (event) => {
     const button = event.target.closest("[data-date-key]");
-    if (!button || !refs.calendarGrid.contains(button) || refs.dayHoverCard.hidden) return;
+    if (!button || !refs.calendarGrid.contains(button)) {
+      hideDayHoverCard();
+      return;
+    }
+    if (refs.dayHoverCard.hidden) {
+      showDayHoverCard(button.dataset.dateKey, button);
+      return;
+    }
     positionDayHoverCard(button);
   });
 
@@ -251,10 +262,11 @@ function renderUpcoming(upcomingDays) {
           <strong class="upcoming-kanshi">${day.kanshi}</strong>
           <span class="upcoming-copy">${day.rating.label} ${day.rating.text} / ${formatScoreValue(day.record.score)}点</span>
           <span class="upcoming-meta">
-            ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)}
+            ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)} (${day.record.days}日平均)
           </span>
           <span class="mini-tag-row">
             ${day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : ""}
+            ${day.opportunity.active ? buildOpportunityChip(day.opportunity) : ""}
             ${buildPlayStyleChip(day.playStyle)}
             ${buildWeekdayChip(day.weekday, day.weekdayContext)}
           </span>
@@ -283,7 +295,7 @@ function renderCalendar(months) {
         .map((day) => {
           if (!day) return `<div class="day-spacer"></div>`;
           const selectedClass = day.dateKey === state.selectedDateKey ? "is-selected" : "";
-          const scoreSummary = escapeHtml(`スコア ${formatScoreValue(day.record.score)}点 / ${day.rating.text} / ${day.playStyle.label}`);
+          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label}`);
           return `
             <button
               class="day-card tier-${day.rating.tier} ${selectedClass}"
@@ -292,13 +304,18 @@ function renderCalendar(months) {
               aria-label="${scoreSummary}"
               title="${scoreSummary}"
             >
-              <span class="day-score-badge">${formatScoreValue(day.record.score)}点</span>
-              ${day.specialDateContext.statuses.length ? `<span class="day-marker is-caution">!</span>` : ""}
-              <span class="day-number">${day.day}</span>
+              <div class="day-card-top">
+                <span class="day-score-badge">${formatCompactScore(day.record.score)}</span>
+                <div class="day-top-right">
+                  ${day.specialDateContext.statuses.length ? `<span class="day-marker is-caution">!</span>` : ""}
+                  <span class="day-number">${day.day}</span>
+                </div>
+              </div>
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
+              ${day.opportunity.active ? `<span class="day-opportunity ${getToneClass(day.opportunity.tone)}">${day.opportunity.label}</span>` : ""}
             </button>
           `;
         })
@@ -357,6 +374,7 @@ function renderSelectedDay() {
   const qualityChip = buildPlayStyleChip(day.playStyle, "質感 ");
   const weekdayChip = buildWeekdayChip(day.weekday, day.weekdayContext);
   const specialDateChip = day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "";
+  const opportunityChip = day.opportunity.active ? buildOpportunityChip(day.opportunity) : "";
 
   refs.selectedDayPanel.innerHTML = `
     <div class="selected-top tier-${day.rating.tier}">
@@ -399,7 +417,7 @@ function renderSelectedDay() {
       <div class="selected-stat">
         <span>実績平均</span>
         <strong>${formatYen(day.record.avg)}</strong>
-        <small>初期値 ${formatYen(day.record.seedAvg)}</small>
+        <small>${day.record.days}日平均 / 初期値 ${formatYen(day.record.seedAvg)}</small>
       </div>
       <div class="selected-stat">
         <span>占断予想</span>
@@ -408,7 +426,7 @@ function renderSelectedDay() {
       </div>
     </div>
 
-    <div class="tag-row">${specialDateChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
+    <div class="tag-row">${specialDateChip}${opportunityChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
     <p class="selected-note">
       4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。偶数月15日は年金支給日の注意日として `-1` を入れています。カレンダーではホバーで詳細、タップで下の詳細欄と入力欄に反映できます。
     </p>
@@ -442,6 +460,7 @@ function renderRecentEntries() {
           </div>
           <div class="mini-tag-row">
             ${info.specialDateContext.statuses.length ? buildSpecialDateChip(info.specialDateContext) : ""}
+            ${info.opportunity.active ? buildOpportunityChip(info.opportunity) : ""}
             ${buildPlayStyleChip(info.playStyle)}
             ${buildWeekdayChip(info.weekday, info.weekdayContext)}
           </div>
@@ -476,6 +495,7 @@ function renderRankings(records) {
 function buildRankingItem(item) {
   const rating = getRating(item.score, item);
   const playStyle = getPlayStyle(item);
+  const opportunity = getOpportunityStatus(item);
   return `
     <article class="ranking-item tier-${rating.tier}">
       <div>
@@ -487,6 +507,7 @@ function buildRankingItem(item) {
         <span>${formatYen(item.avg)}</span>
       </div>
       <div class="mini-tag-row">
+        ${opportunity.active ? buildOpportunityChip(opportunity) : ""}
         ${buildPlayStyleChip(playStyle)}
       </div>
     </article>
@@ -517,7 +538,7 @@ function getTagClass(tag) {
 }
 
 const MONTH_STATUS_SCORE = Object.freeze({
-  "半空": -1,
+  "半空": -0.5,
   "真空": -2,
   "冲": -1
 });
@@ -551,11 +572,16 @@ function getToneClass(tone) {
   if (tone === "stable") return "is-stable";
   if (tone === "rough") return "is-rough";
   if (tone === "caution") return "is-caution";
+  if (tone === "opportunity") return "is-opportunity";
   return "is-neutral";
 }
 
 function buildStatusChip(label, tone) {
   return `<span class="tag ${getToneClass(tone)}">${label}</span>`;
+}
+
+function buildOpportunityChip(opportunity) {
+  return `<span class="tag ${getToneClass(opportunity.tone)}">${opportunity.label}</span>`;
 }
 
 function buildWeekdayChip(weekday, weekdayContext) {
@@ -566,6 +592,10 @@ function formatScoreValue(score) {
   if (!Number.isFinite(Number(score))) return "0";
   const numericScore = Number(score);
   return Number.isInteger(numericScore) ? String(numericScore) : numericScore.toFixed(1);
+}
+
+function formatCompactScore(score) {
+  return `○${formatScoreValue(score)}`;
 }
 
 function getScoreText(score) {
@@ -770,6 +800,7 @@ function buildHoverCardMarkup(day) {
   const weekday = WEEKDAYS[day.weekday];
   const chips = [
     day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "",
+    day.opportunity.active ? buildOpportunityChip(day.opportunity) : "",
     buildPlayStyleChip(day.playStyle),
     buildWeekdayChip(day.weekday, day.weekdayContext),
     ...day.monthContext.statuses.map((status) => `<span class="tag ${getMonthStatusClass(status)}">月${status} ${getScoreText(MONTH_STATUS_SCORE[status] ?? 0)}</span>`)
@@ -789,7 +820,7 @@ function buildHoverCardMarkup(day) {
       </div>
     </div>
     <div class="hover-card-score">
-      <strong>${formatScoreValue(day.record.score)}点</strong>
+      <strong>${formatCompactScore(day.record.score)}</strong>
       <span>${day.record.ts || "通変星なし"}</span>
     </div>
     <p class="hover-card-copy">${day.playStyle.note}</p>
@@ -798,10 +829,12 @@ function buildHoverCardMarkup(day) {
       <div>
         <span>実績平均</span>
         <strong>${formatYen(day.record.avg)}</strong>
+        <small>${day.record.days}日平均</small>
       </div>
       <div>
         <span>占断予想</span>
         <strong>${formatYen(day.record.sendan)}</strong>
+        <small>元シート参考</small>
       </div>
       <div>
         <span>月干支</span>
