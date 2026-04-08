@@ -33,6 +33,7 @@ const refs = {
   summaryCards: document.getElementById("summaryCards"),
   upcomingList: document.getElementById("upcomingList"),
   calendarGrid: document.getElementById("calendarGrid"),
+  dayHoverCard: document.getElementById("dayHoverCard"),
   selectedDayPanel: document.getElementById("selectedDayPanel"),
   recentEntries: document.getElementById("recentEntries"),
   rankingLists: document.getElementById("rankingLists"),
@@ -75,6 +76,33 @@ function wireEvents() {
     render();
   });
 
+  refs.calendarGrid.addEventListener("mouseover", (event) => {
+    const button = event.target.closest("[data-date-key]");
+    if (!button || !refs.calendarGrid.contains(button)) return;
+    showDayHoverCard(button.dataset.dateKey, button);
+  });
+
+  refs.calendarGrid.addEventListener("mousemove", (event) => {
+    const button = event.target.closest("[data-date-key]");
+    if (!button || !refs.calendarGrid.contains(button) || refs.dayHoverCard.hidden) return;
+    positionDayHoverCard(button);
+  });
+
+  refs.calendarGrid.addEventListener("mouseleave", () => {
+    hideDayHoverCard();
+  });
+
+  refs.calendarGrid.addEventListener("focusin", (event) => {
+    const button = event.target.closest("[data-date-key]");
+    if (!button || !refs.calendarGrid.contains(button)) return;
+    showDayHoverCard(button.dataset.dateKey, button);
+  });
+
+  refs.calendarGrid.addEventListener("focusout", (event) => {
+    if (refs.calendarGrid.contains(event.relatedTarget)) return;
+    hideDayHoverCard();
+  });
+
   refs.playDateInput.addEventListener("input", () => {
     state.selectedDateKey = refs.playDateInput.value || CONFIG.anchorDate;
     updateFormPreview();
@@ -89,6 +117,9 @@ function wireEvents() {
   refs.retrySyncButton.addEventListener("click", async () => {
     await hydrateRemoteDashboard(true);
   });
+
+  window.addEventListener("resize", hideDayHoverCard);
+  window.addEventListener("scroll", hideDayHoverCard, true);
 }
 
 function loadLocalEntries() {
@@ -132,10 +163,19 @@ function getMonthModels(records) {
   );
 }
 
+function getTodayDateKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function getUpcomingDays(months) {
+  const todayKey = getTodayDateKey();
   return months
     .flatMap((month) => month.dayRows)
-    .filter((day) => day.record.score >= RATING_THRESHOLDS.goMin)
+    .filter((day) => day.dateKey >= todayKey && day.record.score >= RATING_THRESHOLDS.goMin)
     .sort((left, right) => left.dateKey.localeCompare(right.dateKey));
 }
 
@@ -159,6 +199,7 @@ function getSyncLabel() {
 }
 
 function render() {
+  hideDayHoverCard();
   const records = getComputedRecords();
   const months = getMonthModels(records);
   const summary = getSummary(months);
@@ -177,10 +218,10 @@ function renderSummary(summary) {
   refs.summaryCards.innerHTML = [
     buildSummaryCard("日数", summary.total, "静的に3か月固定", "is-neutral"),
     buildSummaryCard("★ 完璧", summary.perfect, "スコア9", "is-perfect"),
-    buildSummaryCard("◎ 絶好", summary.special, "スコア8", "is-special"),
-    buildSummaryCard("○ 行くべき", summary.go, "スコア6-7", "is-go"),
-    buildSummaryCard("△ どちらでも", summary.hold, "スコア4-5", "is-hold"),
-    buildSummaryCard("× 見送り", summary.avoid, "スコア3以下", "is-avoid")
+    buildSummaryCard("◎ 絶好", summary.special, "スコア7-8", "is-special"),
+    buildSummaryCard("○ 行くべき", summary.go, "スコア5-6", "is-go"),
+    buildSummaryCard("△ どちらでも", summary.hold, "スコア3-4", "is-hold"),
+    buildSummaryCard("× 見送り", summary.avoid, "スコア2以下", "is-avoid")
   ].join("");
 }
 
@@ -196,7 +237,7 @@ function buildSummaryCard(label, value, note, className) {
 
 function renderUpcoming(upcomingDays) {
   if (!upcomingDays.length) {
-    refs.upcomingList.innerHTML = `<p class="empty-text">この期間に「行くべき」日はありません。</p>`;
+    refs.upcomingList.innerHTML = `<p class="empty-text">これから先の○以上の日はありません。</p>`;
     return;
   }
 
@@ -208,7 +249,7 @@ function renderUpcoming(upcomingDays) {
         <button class="upcoming-item tier-${day.rating.tier}" type="button" data-date-key="${day.dateKey}">
           <span class="upcoming-date">${day.month}/${day.day}(${weekday})</span>
           <strong class="upcoming-kanshi">${day.kanshi}</strong>
-          <span class="upcoming-copy">${day.rating.label} ${day.rating.text}</span>
+          <span class="upcoming-copy">${day.rating.label} ${day.rating.text} / ${formatScoreValue(day.record.score)}点</span>
           <span class="upcoming-meta">
             ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)}
           </span>
@@ -242,12 +283,16 @@ function renderCalendar(months) {
         .map((day) => {
           if (!day) return `<div class="day-spacer"></div>`;
           const selectedClass = day.dateKey === state.selectedDateKey ? "is-selected" : "";
+          const scoreSummary = escapeHtml(`スコア ${formatScoreValue(day.record.score)}点 / ${day.rating.text} / ${day.playStyle.label}`);
           return `
             <button
               class="day-card tier-${day.rating.tier} ${selectedClass}"
               type="button"
               data-date-key="${day.dateKey}"
+              aria-label="${scoreSummary}"
+              title="${scoreSummary}"
             >
+              <span class="day-score-badge">${formatScoreValue(day.record.score)}点</span>
               ${day.specialDateContext.statuses.length ? `<span class="day-marker is-caution">!</span>` : ""}
               <span class="day-number">${day.day}</span>
               <strong class="day-rating">${day.rating.label}</strong>
@@ -328,7 +373,7 @@ function renderSelectedDay() {
     <div class="selected-stats">
       <div class="selected-stat">
         <span>現在スコア</span>
-        <strong>${day.record.score}</strong>
+        <strong>${formatScoreValue(day.record.score)}</strong>
         <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
       </div>
       <div class="selected-stat">
@@ -365,7 +410,7 @@ function renderSelectedDay() {
 
     <div class="tag-row">${specialDateChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
     <p class="selected-note">
-      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。偶数月15日は年金支給日の注意日として `-1` を入れています。曜日は店傾向も混ざるため、主判定を壊さない弱い補助ステータスとして表示しています。
+      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。偶数月15日は年金支給日の注意日として `-1` を入れています。カレンダーではホバーで詳細、タップで下の詳細欄と入力欄に反映できます。
     </p>
   `;
 }
@@ -457,7 +502,7 @@ function updateFormPreview() {
     <span class="preview-pill tier-${info.rating.tier}">${dateKey}</span>
     <strong>${info.kanshi}</strong>
     <span>${info.rating.label} ${info.rating.text}</span>
-    <span>現在スコア ${info.record.score}</span>
+    <span>現在スコア ${formatScoreValue(info.record.score)}</span>
     <span>${formatAdjustmentLabel(info.playStyle.label, info.playStyle.adjustment)}</span>
     <span>${info.weekdayContext.shortLabel} ${getScoreText(info.weekdayContext.adjustment)}</span>
     <span>${buildMonthMeta(info.monthContext)}</span>
@@ -515,6 +560,12 @@ function buildStatusChip(label, tone) {
 
 function buildWeekdayChip(weekday, weekdayContext) {
   return `<span class="tag ${getToneClass(weekdayContext.tone)}">${weekdayContext.shortLabel} ${getScoreText(weekdayContext.adjustment)}</span>`;
+}
+
+function formatScoreValue(score) {
+  if (!Number.isFinite(Number(score))) return "0";
+  const numericScore = Number(score);
+  return Number.isInteger(numericScore) ? String(numericScore) : numericScore.toFixed(1);
 }
 
 function getScoreText(score) {
@@ -704,4 +755,104 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function buildScoreBreakdown(day) {
+  return [
+    `日基準 ${formatScoreValue(day.record.baseScore)}`,
+    `月 ${getScoreText(day.monthContext.adjustment)}`,
+    `日付 ${getScoreText(day.specialDateContext.adjustment)}`,
+    `質感 ${getScoreText(day.playStyle.adjustment)}`
+  ].join(" / ");
+}
+
+function buildHoverCardMarkup(day) {
+  const weekday = WEEKDAYS[day.weekday];
+  const chips = [
+    day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "",
+    buildPlayStyleChip(day.playStyle),
+    buildWeekdayChip(day.weekday, day.weekdayContext),
+    ...day.monthContext.statuses.map((status) => `<span class="tag ${getMonthStatusClass(status)}">月${status} ${getScoreText(MONTH_STATUS_SCORE[status] ?? 0)}</span>`)
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return `
+    <div class="hover-card-top">
+      <div>
+        <p class="hover-card-date">${day.year}/${day.month}/${day.day} (${weekday})</p>
+        <h3>${day.kanshi}</h3>
+      </div>
+      <div class="hover-card-badge tier-${day.rating.tier}">
+        <span>${day.rating.label}</span>
+        <strong>${day.rating.text}</strong>
+      </div>
+    </div>
+    <div class="hover-card-score">
+      <strong>${formatScoreValue(day.record.score)}点</strong>
+      <span>${day.record.ts || "通変星なし"}</span>
+    </div>
+    <p class="hover-card-copy">${day.playStyle.note}</p>
+    <p class="hover-card-breakdown">${buildScoreBreakdown(day)}</p>
+    <div class="hover-card-metrics">
+      <div>
+        <span>実績平均</span>
+        <strong>${formatYen(day.record.avg)}</strong>
+      </div>
+      <div>
+        <span>占断予想</span>
+        <strong>${formatYen(day.record.sendan)}</strong>
+      </div>
+      <div>
+        <span>月干支</span>
+        <strong>${day.monthContext.kanshi || "未設定"}</strong>
+      </div>
+      <div>
+        <span>曜日補助</span>
+        <strong>${day.weekdayContext.shortLabel} ${getScoreText(day.weekdayContext.adjustment)}</strong>
+      </div>
+    </div>
+    <div class="hover-card-tags">${chips}</div>
+  `;
+}
+
+function positionDayHoverCard(anchor) {
+  const card = refs.dayHoverCard;
+  if (!card || card.hidden) return;
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  const gutter = 14;
+  let left = anchorRect.right + gutter;
+  let top = anchorRect.top;
+
+  if (left + cardRect.width > window.innerWidth - 12) {
+    left = anchorRect.left - cardRect.width - gutter;
+  }
+  if (left < 12) {
+    left = Math.max(12, Math.min(anchorRect.left, window.innerWidth - cardRect.width - 12));
+  }
+  if (top + cardRect.height > window.innerHeight - 12) {
+    top = window.innerHeight - cardRect.height - 12;
+  }
+  if (top < 12) top = 12;
+
+  card.style.left = `${Math.round(left)}px`;
+  card.style.top = `${Math.round(top)}px`;
+}
+
+function showDayHoverCard(dateKey, anchor) {
+  if (!refs.dayHoverCard || window.matchMedia("(hover: none)").matches) return;
+  const records = getComputedRecords();
+  const day = buildDayInfo(dateKey, records, CONFIG);
+  refs.dayHoverCard.innerHTML = buildHoverCardMarkup(day);
+  refs.dayHoverCard.hidden = false;
+  refs.dayHoverCard.setAttribute("aria-hidden", "false");
+  positionDayHoverCard(anchor);
+}
+
+function hideDayHoverCard() {
+  if (!refs.dayHoverCard) return;
+  refs.dayHoverCard.hidden = true;
+  refs.dayHoverCard.setAttribute("aria-hidden", "true");
 }

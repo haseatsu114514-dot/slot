@@ -15,9 +15,9 @@ export const DEFAULT_CONFIG = Object.freeze({
 
 export const RATING_THRESHOLDS = Object.freeze({
   perfectMin: 9,
-  specialMin: 8,
-  goMin: 6,
-  holdMin: 4
+  specialMin: 7,
+  goMin: 5,
+  holdMin: 3
 });
 
 const RAW_MONTH_PILLAR_TRANSITIONS = [

@@ -338,7 +338,7 @@ a {
 
 .day-card {
   min-height: 112px;
-  padding: 10px 8px 8px;
+  padding: 12px 8px 8px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
@@ -364,6 +364,7 @@ a {
 .day-number {
   font-size: 0.76rem;
   color: var(--muted);
+  margin-top: 4px;
 }
 
 .day-marker {
@@ -378,6 +379,20 @@ a {
   font-size: 0.72rem;
   font-weight: 900;
   background: rgba(255, 255, 255, 0.08);
+}
+
+.day-score-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  min-width: 36px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: var(--text);
+  background: rgba(8, 10, 16, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .day-rating {
@@ -401,6 +416,105 @@ a {
   padding: 3px 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
+}
+
+.day-hover-card {
+  position: fixed;
+  z-index: 30;
+  width: min(340px, calc(100vw - 24px));
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(39, 34, 28, 0.98), rgba(14, 16, 23, 0.98));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.48);
+  pointer-events: none;
+}
+
+.day-hover-card[hidden] {
+  display: none;
+}
+
+.hover-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.hover-card-date {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.hover-card-top h3 {
+  margin: 6px 0 0;
+  font-size: 1.6rem;
+  font-family: "Zen Old Mincho", serif;
+}
+
+.hover-card-badge {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.hover-card-badge span {
+  font-size: 1.45rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.hover-card-badge strong {
+  font-size: 0.88rem;
+}
+
+.hover-card-score {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.hover-card-score strong {
+  font-size: 2rem;
+}
+
+.hover-card-score span,
+.hover-card-copy,
+.hover-card-breakdown,
+.hover-card-metrics {
+  color: var(--muted);
+}
+
+.hover-card-copy,
+.hover-card-breakdown {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.hover-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.78rem;
+}
+
+.hover-card-metrics strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 0.94rem;
+}
+
+.hover-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
 }
 
 .selected-day-panel {
@@ -754,5 +868,9 @@ a {
   .day-spacer,
   .day-card {
     min-height: 104px;
+  }
+
+  .day-hover-card {
+    display: none;
   }
 }
