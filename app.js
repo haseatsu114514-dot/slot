@@ -7,6 +7,7 @@ import {
   buildCalendarMonth,
   buildDayInfo,
   formatYen,
+  getDaysInMonth,
   getOpportunityStatus,
   getMonthSequence,
   getPlayStyle,
@@ -18,12 +19,13 @@ import {
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
+const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
 
 const state = {
   remoteRecords: null,
   remoteEntries: [],
   localEntries: loadLocalEntries(),
-  selectedDateKey: CONFIG.anchorDate,
+  selectedDateKey: INITIAL_SELECTED_DATE_KEY,
   sync: {
     mode: CONFIG.syncEndpoint ? "loading" : "local",
     message: CONFIG.syncEndpoint ? "Google Sheets に接続しています..." : "ローカルモードで動作中です。"
@@ -53,8 +55,8 @@ const refs = {
 document.addEventListener("DOMContentLoaded", () => {
   refs.playDateInput.value = state.selectedDateKey;
   updateFormPreview();
-  wireEvents();
   render();
+  wireEvents();
   hydrateRemoteDashboard();
   startAutoSync();
 });
@@ -130,7 +132,7 @@ function wireEvents() {
     await hydrateRemoteDashboard(true);
   });
 
-  refs.syncNowButton.addEventListener("click", async () => {
+  refs.syncNowButton?.addEventListener("click", async () => {
     await hydrateRemoteDashboard(true);
   });
 
@@ -177,6 +179,21 @@ function getMonthModels(records) {
   return getMonthSequence(CONFIG.startMonth, CONFIG.monthCount).map(({ year, month }) =>
     buildCalendarMonth(year, month, records, CONFIG)
   );
+}
+
+function getInitialSelectedDateKey(config) {
+  const months = getMonthSequence(config.startMonth, config.monthCount);
+  if (!months.length) return config.anchorDate;
+
+  const firstMonth = months[0];
+  const lastMonth = months[months.length - 1];
+  const firstDateKey = `${firstMonth.year}-${String(firstMonth.month).padStart(2, "0")}-01`;
+  const lastDateKey = `${lastMonth.year}-${String(lastMonth.month).padStart(2, "0")}-${String(getDaysInMonth(lastMonth.year, lastMonth.month)).padStart(2, "0")}`;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  if (todayKey >= firstDateKey && todayKey <= lastDateKey) return todayKey;
+  return config.anchorDate;
 }
 
 function getTodayDateKey() {
@@ -625,7 +642,7 @@ async function hydrateRemoteDashboard(forceMessage = false) {
     message: "Google Sheets に接続しています..."
   };
   refs.retrySyncButton.disabled = true;
-  refs.syncNowButton.disabled = true;
+  if (refs.syncNowButton) refs.syncNowButton.disabled = true;
   render();
 
   try {
@@ -657,7 +674,7 @@ async function hydrateRemoteDashboard(forceMessage = false) {
     setFormStatus("Sheets 同期に失敗したため、いったんローカル保存で継続します。", "warn");
   } finally {
     refs.retrySyncButton.disabled = false;
-    refs.syncNowButton.disabled = false;
+    if (refs.syncNowButton) refs.syncNowButton.disabled = false;
     render();
   }
 }
