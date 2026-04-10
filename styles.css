@@ -112,6 +112,7 @@ a {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 22px;
+  align-items: center;
 }
 
 .hero-chip,
@@ -128,6 +129,21 @@ a {
 .hero-chip-label {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.hero-sync-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.hero-sync-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .page-content {
@@ -338,7 +354,7 @@ a {
 
 .day-card {
   min-height: 112px;
-  padding: 12px 8px 8px;
+  padding: 10px 8px 8px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
@@ -352,6 +368,24 @@ a {
   position: relative;
 }
 
+.day-card-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 22px;
+  margin-bottom: 2px;
+}
+
+.day-top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .day-card:hover {
   transform: translateY(-2px);
 }
@@ -362,15 +396,14 @@ a {
 }
 
 .day-number {
-  font-size: 0.76rem;
+  font-size: 0.82rem;
+  font-weight: 700;
   color: var(--muted);
-  margin-top: 4px;
+  min-width: 1.4em;
+  text-align: right;
 }
 
 .day-marker {
-  position: absolute;
-  top: 6px;
-  right: 6px;
   width: 18px;
   height: 18px;
   display: grid;
@@ -382,17 +415,16 @@ a {
 }
 
 .day-score-badge {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  min-width: 36px;
+  min-width: 42px;
   padding: 3px 7px;
   border-radius: 999px;
   font-size: 0.62rem;
   font-weight: 800;
+  line-height: 1;
   color: var(--text);
   background: rgba(8, 10, 16, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
 }
 
 .day-rating {
@@ -416,6 +448,13 @@ a {
   padding: 3px 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
+}
+
+.day-opportunity {
+  margin-top: 1px;
+  font-size: 0.56rem;
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 .day-hover-card {
@@ -633,6 +672,12 @@ a {
 .is-caution {
   color: #efc472;
   background: rgba(231, 185, 76, 0.16);
+}
+
+.tag.is-opportunity,
+.is-opportunity {
+  color: #8de4d0;
+  background: rgba(56, 161, 146, 0.18);
 }
 
 .tier-go,
