@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260411b">
+    <link rel="stylesheet" href="./styles.css?v=20260411c">
   </head>
   <body>
     <div class="page-shell">
@@ -15,11 +15,6 @@
         <div class="hero-copy">
           <p class="eyebrow">Sexagenary Slot Calendar</p>
           <h1>打つべきか、打たないべきか</h1>
-          <p class="hero-text">
-            2026年4月7日を「辛亥」の基準日に固定し、4月から3か月分の六十干支カレンダーを表示します。
-            成績入力は「1日の収支」で記録し、月の半空・真空・冲は節入り基準の月干支から補正します。
-            Google Sheets 連携時はページ再読み込みや自動同期で反映されます。
-          </p>
         </div>
 
         <div class="hero-meta">
@@ -137,27 +132,6 @@
           <div id="dayHoverCard" class="day-hover-card" hidden></div>
         </section>
 
-        <section class="detail-grid">
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Recent Results</p>
-                <h2>最近の入力</h2>
-              </div>
-            </div>
-            <div id="recentEntries" class="recent-entries"></div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Ranking</p>
-                <h2>干支の現在地</h2>
-              </div>
-            </div>
-            <div id="rankingLists" class="ranking-lists"></div>
-          </article>
-        </section>
       </main>
     </div>
 
@@ -172,6 +146,6 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260411b"></script>
+    <script type="module" src="./app.js?v=20260411c"></script>
   </body>
 </html>

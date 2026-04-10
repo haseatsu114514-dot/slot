@@ -67,23 +67,27 @@ document.addEventListener("DOMContentLoaded", () => {
   startAutoSync();
 });
 
+function selectDate(dateKey) {
+  if (!dateKey) return;
+  state.selectedDateKey = dateKey;
+  refs.playDateInput.value = state.selectedDateKey;
+  updateFormPreview();
+  render();
+}
+
 function wireEvents() {
   refs.calendarGrid.addEventListener("click", (event) => {
     const button = event.target.closest("[data-date-key]");
     if (!button) return;
-    state.selectedDateKey = button.dataset.dateKey;
-    refs.playDateInput.value = state.selectedDateKey;
-    updateFormPreview();
-    render();
+    event.preventDefault();
+    selectDate(button.dataset.dateKey);
   });
 
   refs.upcomingList.addEventListener("click", (event) => {
     const button = event.target.closest("[data-date-key]");
     if (!button) return;
-    state.selectedDateKey = button.dataset.dateKey;
-    refs.playDateInput.value = state.selectedDateKey;
-    updateFormPreview();
-    render();
+    event.preventDefault();
+    selectDate(button.dataset.dateKey);
   });
 
   refs.calendarGrid.addEventListener("mouseover", (event) => {
@@ -126,7 +130,7 @@ function wireEvents() {
   refs.playDateInput.addEventListener("input", () => {
     state.selectedDateKey = refs.playDateInput.value || CONFIG.anchorDate;
     updateFormPreview();
-    renderSelectedDay();
+    render();
   });
 
   refs.resultForm.addEventListener("submit", async (event) => {
@@ -210,11 +214,22 @@ function getTodayDateKey() {
   return `${year}-${month}-${day}`;
 }
 
+function getFutureDateKey(daysAhead) {
+  const next = new Date();
+  next.setHours(12, 0, 0, 0);
+  next.setDate(next.getDate() + daysAhead);
+  const year = next.getFullYear();
+  const month = String(next.getMonth() + 1).padStart(2, "0");
+  const day = String(next.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function getUpcomingDays(months) {
   const todayKey = getTodayDateKey();
+  const endKey = getFutureDateKey(14);
   return months
     .flatMap((month) => month.dayRows)
-    .filter((day) => day.dateKey >= todayKey && day.record.score >= RATING_THRESHOLDS.goMin)
+    .filter((day) => day.dateKey >= todayKey && day.dateKey <= endKey && day.record.score >= RATING_THRESHOLDS.goMin)
     .sort((left, right) => left.dateKey.localeCompare(right.dateKey));
 }
 
@@ -276,12 +291,11 @@ function buildSummaryCard(label, value, note, className) {
 
 function renderUpcoming(upcomingDays) {
   if (!upcomingDays.length) {
-    refs.upcomingList.innerHTML = `<p class="empty-text">これから先の○以上の日はありません。</p>`;
+    refs.upcomingList.innerHTML = `<p class="empty-text">これから2週間以内の○以上の日はありません。</p>`;
     return;
   }
 
   refs.upcomingList.innerHTML = upcomingDays
-    .slice(0, 12)
     .map((day) => {
       const weekday = WEEKDAYS[day.weekday];
       return `
@@ -305,6 +319,7 @@ function renderUpcoming(upcomingDays) {
 }
 
 function renderCalendar(months) {
+  const [selectedYear, selectedMonth] = state.selectedDateKey.split("-").map(Number);
   refs.calendarGrid.innerHTML = months
     .map((month) => {
       const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
@@ -348,27 +363,33 @@ function renderCalendar(months) {
           `;
         })
         .join("");
+      const isOpen = month.year === selectedYear && month.month === selectedMonth;
 
       return `
-        <article class="month-card">
-          <header class="month-header">
-            <div>
+        <details class="month-accordion" ${isOpen ? "open" : ""}>
+          <summary class="month-accordion-summary">
+            <div class="month-accordion-title">
               <p class="month-kicker">${month.year}</p>
               <h3>${month.label}</h3>
               <p class="month-pillar">月干支: ${month.monthPillarSummary}</p>
-              <p class="month-expectation">
-                ★・◎・○だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
-              </p>
             </div>
-            <div class="month-stats">${statChips}</div>
-          </header>
-          <div class="weekday-row">
-            ${WEEKDAYS.map((weekday, index) => `<span class="weekday weekday-${index}">${weekday}</span>`).join("")}
-          </div>
-          <div class="month-day-grid">
-            ${dayCells}
-          </div>
-        </article>
+            <div class="month-accordion-meta">
+              <div class="month-stats">${statChips}</div>
+              <span class="month-accordion-arrow" aria-hidden="true"></span>
+            </div>
+          </summary>
+          <article class="month-card">
+            <p class="month-expectation">
+              ★・◎・○だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
+            </p>
+            <div class="weekday-row">
+              ${WEEKDAYS.map((weekday, index) => `<span class="weekday weekday-${index}">${weekday}</span>`).join("")}
+            </div>
+            <div class="month-day-grid">
+              ${dayCells}
+            </div>
+          </article>
+        </details>
       `;
     })
     .join("");
@@ -379,89 +400,97 @@ function buildMonthStat(label, value, tier) {
 }
 
 function renderSelectedDay() {
-  const records = getComputedRecords();
-  const day = buildDayInfo(state.selectedDateKey, records, CONFIG);
-  const weekday = WEEKDAYS[day.weekday];
-  const liveDelta = day.record.baseScore - day.record.seedScore;
-  const liveDeltaLabel = liveDelta === 0 ? "入力反映なし" : liveDelta > 0 ? `入力反映で +${liveDelta}` : `入力反映で ${liveDelta}`;
-  const monthAdjustmentLabel = day.monthContext.adjustment === 0
-    ? "月補正なし"
-    : `月補正 ${day.monthContext.adjustment}`;
-  const specialDateAdjustmentLabel = day.specialDateContext.adjustment === 0
-    ? "日付補正なし"
-    : `日付補正 ${day.specialDateContext.adjustment}`;
-  const playStyleAdjustmentLabel = day.playStyle.adjustment === 0
-    ? "質感補正なし"
-    : `質感補正 ${getScoreText(day.playStyle.adjustment)}`;
-  const monthTags = day.monthContext.statuses.length
-    ? day.monthContext.statuses.map((status) => `<span class="tag ${getMonthStatusClass(status)}">月${status} ${getScoreText(MONTH_STATUS_SCORE[status] ?? 0)}</span>`).join("")
-    : `<span class="tag">月補正なし</span>`;
-  const recordTags = day.record.tags.length
-    ? day.record.tags.map((tag) => `<span class="tag ${getTagClass(tag)}">${tag}</span>`).join("")
-    : "";
-  const qualityChip = buildPlayStyleChip(day.playStyle, "質感 ");
-  const weekdayChip = buildWeekdayChip(day.weekday, day.weekdayContext);
-  const specialDateChip = day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "";
-  const opportunityChip = day.opportunity.active ? buildOpportunityChip(day.opportunity) : "";
+  if (!refs.selectedDayPanel) return;
+  try {
+    const records = getComputedRecords();
+    const day = buildDayInfo(state.selectedDateKey, records, CONFIG);
+    const weekday = WEEKDAYS[day.weekday];
+    const liveDelta = day.record.baseScore - day.record.seedScore;
+    const liveDeltaLabel = liveDelta === 0 ? "入力反映なし" : liveDelta > 0 ? `入力反映で +${liveDelta}` : `入力反映で ${liveDelta}`;
+    const monthAdjustmentLabel = day.monthContext.adjustment === 0
+      ? "月補正なし"
+      : `月補正 ${getScoreText(day.monthContext.adjustment)}`;
+    const specialDateAdjustmentLabel = day.specialDateContext.adjustment === 0
+      ? "日付補正なし"
+      : `日付補正 ${getScoreText(day.specialDateContext.adjustment)}`;
+    const playStyleAdjustmentLabel = day.playStyle.adjustment === 0
+      ? "質感補正なし"
+      : `質感補正 ${getScoreText(day.playStyle.adjustment)}`;
+    const monthTags = day.monthContext.statuses.length
+      ? day.monthContext.statuses.map((status) => `<span class="tag ${getMonthStatusClass(status)}">月${status} ${getScoreText(MONTH_STATUS_SCORE[status] ?? 0)}</span>`).join("")
+      : `<span class="tag">月補正なし</span>`;
+    const recordTags = (day.record.tags || []).length
+      ? day.record.tags.map((tag) => `<span class="tag ${getTagClass(tag)}">${tag}</span>`).join("")
+      : "";
+    const qualityChip = buildPlayStyleChip(day.playStyle, "質感 ");
+    const weekdayChip = buildWeekdayChip(day.weekday, day.weekdayContext);
+    const specialDateChip = day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "";
+    const opportunityChip = day.opportunity.active ? buildOpportunityChip(day.opportunity) : "";
 
-  refs.selectedDayPanel.innerHTML = `
-    <div class="selected-top tier-${day.rating.tier}">
-      <div>
-        <p class="selected-date">${day.year}/${day.month}/${day.day} (${weekday})</p>
-        <h3>${day.kanshi}</h3>
+    refs.selectedDayPanel.innerHTML = `
+      <div class="selected-top tier-${day.rating.tier}">
+        <div>
+          <p class="selected-date">${day.year}/${day.month}/${day.day} (${weekday})</p>
+          <h3>${day.kanshi}</h3>
+        </div>
+        <div class="selected-badge">
+          <span>${day.rating.label}</span>
+          <strong>${day.rating.text}</strong>
+        </div>
       </div>
-      <div class="selected-badge">
-        <span>${day.rating.label}</span>
-        <strong>${day.rating.text}</strong>
-      </div>
-    </div>
 
-    <div class="selected-stats">
-      <div class="selected-stat">
-        <span>現在スコア</span>
-        <strong>${formatScoreValue(day.record.score)}</strong>
-        <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
+      <div class="selected-stats">
+        <div class="selected-stat">
+          <span>現在スコア</span>
+          <strong>${formatScoreValue(day.record.score)}</strong>
+          <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
+        </div>
+        <div class="selected-stat">
+          <span>通変星</span>
+          <strong>${day.record.ts || "-"}</strong>
+          <small>${liveDeltaLabel}</small>
+        </div>
+        <div class="selected-stat">
+          <span>月干支</span>
+          <strong>${day.monthContext.kanshi || "-"}</strong>
+          <small>${day.monthContext.statuses.join(" / ") || "補正なし"}</small>
+        </div>
+        <div class="selected-stat">
+          <span>質感ステータス</span>
+          <strong>${day.playStyle.label}</strong>
+          <small>${day.playStyle.note}</small>
+        </div>
+        <div class="selected-stat">
+          <span>曜日補助</span>
+          <strong>${weekday}曜 ${getScoreText(day.weekdayContext.adjustment)}</strong>
+          <small>${day.weekdayContext.label}</small>
+        </div>
+        <div class="selected-stat">
+          <span>実績平均</span>
+          <strong>${formatYen(day.record.avg)}</strong>
+          <small>${day.record.days}日平均 / 初期値 ${formatYen(day.record.seedAvg)}</small>
+        </div>
+        <div class="selected-stat">
+          <span>占断予想</span>
+          <strong>${formatYen(day.record.sendan)}</strong>
+          <small>元シート由来の参考値</small>
+        </div>
       </div>
-      <div class="selected-stat">
-        <span>通変星</span>
-        <strong>${day.record.ts || "-"}</strong>
-        <small>${liveDeltaLabel}</small>
-      </div>
-      <div class="selected-stat">
-        <span>月干支</span>
-        <strong>${day.monthContext.kanshi || "-"}</strong>
-        <small>${day.monthContext.statuses.join(" / ") || "補正なし"}</small>
-      </div>
-      <div class="selected-stat">
-        <span>質感ステータス</span>
-        <strong>${day.playStyle.label}</strong>
-        <small>${day.playStyle.note}</small>
-      </div>
-      <div class="selected-stat">
-        <span>曜日補助</span>
-        <strong>${weekday}曜 ${getScoreText(day.weekdayContext.adjustment)}</strong>
-        <small>${day.weekdayContext.label}</small>
-      </div>
-      <div class="selected-stat">
-        <span>実績平均</span>
-        <strong>${formatYen(day.record.avg)}</strong>
-        <small>${day.record.days}日平均 / 初期値 ${formatYen(day.record.seedAvg)}</small>
-      </div>
-      <div class="selected-stat">
-        <span>占断予想</span>
-        <strong>${formatYen(day.record.sendan)}</strong>
-        <small>元シート由来の参考値</small>
-      </div>
-    </div>
 
-    <div class="tag-row">${specialDateChip}${opportunityChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
-    <p class="selected-note">
-      4月7日を「辛亥」として日ごとに六十干支を回し、月干支は節入りで切り替えています。スコアは実績と占断の総合評価を土台にし、月の半空・真空・冲は月全体の補正として反映します。偶数月15日は年金支給日の注意日として `-1` を入れています。カレンダーではホバーで詳細、タップで下の詳細欄と入力欄に反映できます。
-    </p>
-  `;
+      <div class="tag-row">${specialDateChip}${opportunityChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
+    `;
+  } catch (error) {
+    refs.selectedDayPanel.innerHTML = `
+      <div class="selected-fallback">
+        <strong>日付詳細を読み込めませんでした。</strong>
+        <span>もう一度日付をタップするか、ページを再読み込みしてください。</span>
+      </div>
+    `;
+  }
 }
 
 function renderRecentEntries() {
+  if (!refs.recentEntries) return;
   const entries = getAllEntries();
   const records = getComputedRecords();
 
@@ -500,6 +529,7 @@ function renderRecentEntries() {
 }
 
 function renderRankings(records) {
+  if (!refs.rankingLists) return;
   const ranked = Object.values(records).sort((left, right) => {
     if (left.score !== right.score) return right.score - left.score;
     return (right.avg || -Infinity) - (left.avg || -Infinity);
