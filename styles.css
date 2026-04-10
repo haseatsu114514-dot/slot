@@ -262,8 +262,8 @@ a {
 
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
 }
 
 .legend {
@@ -283,7 +283,7 @@ a {
 }
 
 .month-card {
-  padding: 18px;
+  padding: 20px;
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   background:
@@ -296,6 +296,7 @@ a {
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+  flex-wrap: wrap;
   margin-bottom: 14px;
 }
 
@@ -330,7 +331,7 @@ a {
 .month-day-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .weekday {
@@ -349,12 +350,12 @@ a {
 }
 
 .day-spacer {
-  min-height: 112px;
+  min-height: 118px;
 }
 
 .day-card {
-  min-height: 112px;
-  padding: 10px 8px 8px;
+  min-height: 118px;
+  padding: 8px 7px 7px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
@@ -362,7 +363,7 @@ a {
   display: grid;
   justify-items: center;
   align-content: start;
-  gap: 3px;
+  gap: 4px;
   cursor: pointer;
   transition: transform 0.16s ease, border-color 0.16s ease;
   position: relative;
@@ -375,7 +376,7 @@ a {
   justify-content: space-between;
   gap: 6px;
   min-height: 22px;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .day-top-right {
@@ -415,10 +416,10 @@ a {
 }
 
 .day-score-badge {
-  min-width: 42px;
-  padding: 3px 7px;
+  min-width: 38px;
+  padding: 3px 6px;
   border-radius: 999px;
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 800;
   line-height: 1;
   color: var(--text);
@@ -428,32 +429,32 @@ a {
 }
 
 .day-rating {
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   line-height: 1;
 }
 
 .day-kanshi {
   font-weight: 800;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 
 .day-ts {
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   color: var(--muted);
 }
 
 .day-style {
   margin-top: 2px;
-  font-size: 0.58rem;
-  padding: 3px 8px;
+  font-size: 0.54rem;
+  padding: 3px 7px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
 }
 
 .day-opportunity {
   margin-top: 1px;
-  font-size: 0.56rem;
-  padding: 2px 8px;
+  font-size: 0.54rem;
+  padding: 2px 7px;
   border-radius: 999px;
 }
 
@@ -866,11 +867,6 @@ a {
 }
 
 @media (max-width: 1200px) {
-  .calendar-grid,
-  .summary-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .summary-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -910,12 +906,68 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .day-spacer,
-  .day-card {
-    min-height: 104px;
-  }
-
   .day-hover-card {
     display: none;
+  }
+
+  .month-card {
+    padding: 16px;
+  }
+
+  .month-header {
+    gap: 10px;
+  }
+
+  .month-header h3 {
+    font-size: 1.15rem;
+  }
+
+  .month-pillar,
+  .month-expectation {
+    font-size: 0.74rem;
+  }
+
+  .weekday-row,
+  .month-day-grid {
+    gap: 4px;
+  }
+
+  .day-spacer,
+  .day-card {
+    min-height: 96px;
+  }
+
+  .day-number {
+    font-size: 0.74rem;
+  }
+
+  .day-marker {
+    width: 16px;
+    height: 16px;
+    font-size: 0.64rem;
+  }
+
+  .day-score-badge {
+    min-width: 34px;
+    padding: 2px 5px;
+    font-size: 0.54rem;
+  }
+
+  .day-rating {
+    font-size: 1.05rem;
+  }
+
+  .day-kanshi {
+    font-size: 0.72rem;
+  }
+
+  .day-ts {
+    font-size: 0.53rem;
+  }
+
+  .day-style,
+  .day-opportunity {
+    font-size: 0.5rem;
+    padding: 2px 6px;
   }
 }
