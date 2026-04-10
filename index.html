@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260411c">
+    <link rel="stylesheet" href="./styles.css?v=20260411d">
   </head>
   <body>
     <div class="page-shell">
@@ -65,71 +65,107 @@
           </article>
         </section>
 
-        <section class="detail-grid">
-          <article class="panel">
+        <section class="panel panel-aggregates">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Stem &amp; Branch</p>
+              <h2>天干・地支 集計</h2>
+            </div>
+            <span class="panel-note">勝=収支プラスの日数 / 負=収支マイナスの日数 / 評=勝−負</span>
+          </div>
+          <div class="aggregate-grid">
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">天干（10干）</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table" id="stemTable"></table>
+              </div>
+            </div>
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">地支（12支）</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table" id="branchTable"></table>
+              </div>
+            </div>
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">五行サマリー（天/地/評）</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table element-table" id="elementTable"></table>
+              </div>
+            </div>
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">評価別 平均収支</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table rating-table" id="ratingSummaryTable"></table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="calendar-detail-grid">
+          <article class="panel panel-calendar">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Hover / Tap</p>
+                <p class="panel-kicker">Calendar</p>
+                <h2>3か月カレンダー</h2>
+              </div>
+              <div class="legend">
+                <span class="legend-item is-perfect">★</span>
+                <span class="legend-item is-special">◎</span>
+                <span class="legend-item is-go">○</span>
+                <span class="legend-item is-hold">△</span>
+                <span class="legend-item is-avoid">×</span>
+              </div>
+            </div>
+            <div id="calendarGrid" class="calendar-grid"></div>
+            <div id="dayHoverCard" class="day-hover-card" hidden></div>
+          </article>
+
+          <aside class="panel panel-detail">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Day Detail</p>
                 <h2>日付詳細</h2>
               </div>
             </div>
             <div id="selectedDayPanel" class="selected-day-panel"></div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Record Input</p>
-                <h2>1日の収支を入力</h2>
-              </div>
-            </div>
-
-            <form id="resultForm" class="result-form">
-              <label>
-                <span>日付</span>
-                <input id="playDateInput" name="playDate" type="date" required>
-              </label>
-
-              <div class="form-preview" id="formPreview"></div>
-
-              <label>
-                <span>収支</span>
-                <input id="profitInput" name="profit" type="number" step="100" placeholder="例: 18500 / -32000" required>
-              </label>
-
-              <label class="form-wide">
-                <span>メモ</span>
-                <textarea id="memoInput" name="memo" rows="4" placeholder="1日の内容や気づきのメモ"></textarea>
-              </label>
-
-              <div class="form-actions">
-                <button id="saveButton" class="primary-button" type="submit">成績を保存する</button>
-                <button id="retrySyncButton" class="secondary-button" type="button">Sheets同期を再試行</button>
-              </div>
-
-              <p id="formStatus" class="form-status">
-                Google Sheets の Web アプリ URL を設定すると、保存時にシートへ追記され、再読み込みや自動同期でも反映されます。
-              </p>
-            </form>
-          </article>
+          </aside>
         </section>
 
-        <section class="panel">
+        <section class="panel panel-form">
           <div class="panel-head">
             <div>
-              <p class="panel-kicker">Calendar</p>
-              <h2>3か月カレンダー</h2>
-            </div>
-            <div class="legend">
-              <span class="legend-item is-perfect">★ 完璧</span>
-              <span class="legend-item is-special">◎ 絶好</span>
-              <span class="legend-item is-go">○ 行くべき</span>
-              <span class="legend-item is-hold">△ どちらでも</span>
-              <span class="legend-item is-avoid">× 見送り</span>
+              <p class="panel-kicker">Record Input</p>
+              <h2>1日の収支を入力</h2>
             </div>
           </div>
-          <div id="calendarGrid" class="calendar-grid"></div>
-          <div id="dayHoverCard" class="day-hover-card" hidden></div>
+
+          <form id="resultForm" class="result-form">
+            <label>
+              <span>日付</span>
+              <input id="playDateInput" name="playDate" type="date" required>
+            </label>
+
+            <div class="form-preview" id="formPreview"></div>
+
+            <label>
+              <span>収支</span>
+              <input id="profitInput" name="profit" type="number" step="100" placeholder="例: 18500 / -32000" required>
+            </label>
+
+            <label class="form-wide">
+              <span>メモ</span>
+              <textarea id="memoInput" name="memo" rows="4" placeholder="1日の内容や気づきのメモ"></textarea>
+            </label>
+
+            <div class="form-actions">
+              <button id="saveButton" class="primary-button" type="submit">成績を保存する</button>
+              <button id="retrySyncButton" class="secondary-button" type="button">Sheets同期を再試行</button>
+            </div>
+
+            <p id="formStatus" class="form-status">
+              Google Sheets の Web アプリ URL を設定すると、保存時にシートへ追記され、再読み込みや自動同期でも反映されます。
+            </p>
+          </form>
         </section>
 
       </main>
@@ -146,6 +182,6 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260411c"></script>
+    <script type="module" src="./app.js?v=20260411d"></script>
   </body>
 </html>

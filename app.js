@@ -13,8 +13,15 @@ import {
   getPlayStyle,
   getRating,
   getKanshiForDateKey,
+  getConfidence,
   RATING_THRESHOLDS,
-  isPerfectRecord
+  isPerfectRecord,
+  buildEntriesMap,
+  aggregateByStem,
+  aggregateByBranch,
+  aggregateByElement,
+  aggregateByRatingTier,
+  SEED_MONTHLY_ENTRIES
 } from "./kanshi-data.js";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
@@ -40,6 +47,10 @@ const refs = {
   selectedDayPanel: document.getElementById("selectedDayPanel"),
   recentEntries: document.getElementById("recentEntries"),
   rankingLists: document.getElementById("rankingLists"),
+  stemTable: document.getElementById("stemTable"),
+  branchTable: document.getElementById("branchTable"),
+  elementTable: document.getElementById("elementTable"),
+  ratingSummaryTable: document.getElementById("ratingSummaryTable"),
   syncBadgeText: document.getElementById("syncBadgeText"),
   syncNowButton: document.getElementById("syncNowButton"),
   resultForm: document.getElementById("resultForm"),
@@ -73,6 +84,13 @@ function selectDate(dateKey) {
   refs.playDateInput.value = state.selectedDateKey;
   updateFormPreview();
   render();
+  // On narrow screens, bring the detail panel into view so the user
+  // doesn't have to scroll manually after tapping a day.
+  if (window.matchMedia && window.matchMedia("(max-width: 960px)").matches) {
+    if (refs.selectedDayPanel) {
+      refs.selectedDayPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
 }
 
 function wireEvents() {
@@ -262,10 +280,173 @@ function render() {
   refs.syncBadgeText.textContent = getSyncLabel();
   renderSummary(summary);
   renderUpcoming(upcomingDays);
+  renderAggregates(records);
   renderCalendar(months);
   renderSelectedDay();
   renderRecentEntries();
   renderRankings(records);
+}
+
+function getAggregateEntriesMap() {
+  const extra = getAllEntries().filter((entry) => entry && entry.kanshi && Number.isFinite(Number(entry.profit)));
+  return buildEntriesMap(SEED_MONTHLY_ENTRIES, extra);
+}
+
+function renderAggregates(records) {
+  const entriesMap = getAggregateEntriesMap();
+  const stemRows = aggregateByStem(entriesMap);
+  const branchRows = aggregateByBranch(entriesMap);
+  const elementRows = aggregateByElement(stemRows, branchRows);
+  const ratingRows = aggregateByRatingTier(records);
+
+  if (refs.stemTable) {
+    refs.stemTable.innerHTML = buildStemBranchTable(stemRows, "天干");
+  }
+  if (refs.branchTable) {
+    refs.branchTable.innerHTML = buildStemBranchTable(branchRows, "地支");
+  }
+  if (refs.elementTable) {
+    refs.elementTable.innerHTML = buildElementTable(elementRows);
+  }
+  if (refs.ratingSummaryTable) {
+    refs.ratingSummaryTable.innerHTML = buildRatingSummaryTable(ratingRows);
+  }
+}
+
+function buildStemBranchTable(rows, headerLabel) {
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.wins += row.wins;
+      acc.losses += row.losses;
+      acc.rating += row.rating;
+      acc.total += row.total;
+      acc.days += row.days;
+      return acc;
+    },
+    { wins: 0, losses: 0, rating: 0, total: 0, days: 0 }
+  );
+  const totalDaily = totals.days > 0 ? Math.round(totals.total / totals.days) : 0;
+  const totalHourly = totals.days > 0 ? Math.round(totals.total / totals.days / 3.5) : 0;
+
+  const header = `
+    <thead>
+      <tr>
+        <th class="col-label">${headerLabel}</th>
+        <th>勝</th>
+        <th>負</th>
+        <th>評</th>
+        <th>総収支</th>
+        <th>日給</th>
+        <th>時給<small>(3.5h)</small></th>
+        <th>日数</th>
+      </tr>
+    </thead>
+  `;
+
+  const body = rows
+    .map((row) => {
+      const ratingClass = row.rating > 0 ? "is-plus" : row.rating < 0 ? "is-minus" : "";
+      const totalClass = row.total > 0 ? "is-plus" : row.total < 0 ? "is-minus" : "";
+      const dailyClass = row.daily > 0 ? "is-plus" : row.daily < 0 ? "is-minus" : "";
+      const hourlyClass = row.hourly > 0 ? "is-plus" : row.hourly < 0 ? "is-minus" : "";
+      return `
+        <tr>
+          <th class="col-label">
+            <span class="agg-key">${row.key}</span>
+            ${row.label ? `<small>(${row.label})</small>` : ""}
+          </th>
+          <td>${row.wins}</td>
+          <td>${row.losses}</td>
+          <td class="${ratingClass}">${formatSigned(row.rating)}</td>
+          <td class="${totalClass}">${formatYen(row.total)}</td>
+          <td class="${dailyClass}">${formatYen(row.daily)}</td>
+          <td class="${hourlyClass}">${formatYen(row.hourly)}</td>
+          <td>${row.days}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const footClass = totals.total > 0 ? "is-plus" : totals.total < 0 ? "is-minus" : "";
+  const foot = `
+    <tfoot>
+      <tr>
+        <th class="col-label">計</th>
+        <td>${totals.wins}</td>
+        <td>${totals.losses}</td>
+        <td class="${totals.rating > 0 ? "is-plus" : totals.rating < 0 ? "is-minus" : ""}">${formatSigned(totals.rating)}</td>
+        <td class="${footClass}">${formatYen(totals.total)}</td>
+        <td class="${totalDaily > 0 ? "is-plus" : totalDaily < 0 ? "is-minus" : ""}">${formatYen(totalDaily)}</td>
+        <td class="${totalHourly > 0 ? "is-plus" : totalHourly < 0 ? "is-minus" : ""}">${formatYen(totalHourly)}</td>
+        <td>${totals.days}</td>
+      </tr>
+    </tfoot>
+  `;
+
+  return header + "<tbody>" + body + "</tbody>" + foot;
+}
+
+function buildElementTable(rows) {
+  const header = `
+    <thead>
+      <tr>
+        <th class="col-label">五行</th>
+        <th>天</th>
+        <th>地</th>
+        <th>評</th>
+      </tr>
+    </thead>
+  `;
+  const body = rows
+    .map((row) => {
+      const toneClass = (value) => (value > 0 ? "is-plus" : value < 0 ? "is-minus" : "");
+      return `
+        <tr class="element-row element-${row.element}">
+          <th class="col-label">${row.element}</th>
+          <td class="${toneClass(row.heaven)}">${formatSigned(row.heaven)}</td>
+          <td class="${toneClass(row.earth)}">${formatSigned(row.earth)}</td>
+          <td class="${toneClass(row.total)}">${formatSigned(row.total)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+  return header + "<tbody>" + body + "</tbody>";
+}
+
+function buildRatingSummaryTable(rows) {
+  const header = `
+    <thead>
+      <tr>
+        <th class="col-label">評価帯</th>
+        <th>該当数</th>
+        <th>実績平均</th>
+        <th>占断平均</th>
+        <th>最終予想</th>
+      </tr>
+    </thead>
+  `;
+  const body = rows
+    .map((row) => {
+      const tone = (value) => (value === null ? "" : value > 0 ? "is-plus" : value < 0 ? "is-minus" : "");
+      return `
+        <tr class="tier-${row.key}">
+          <th class="col-label">${row.label}</th>
+          <td>${row.count}</td>
+          <td class="${tone(row.avgActual)}">${row.avgActual === null ? "—" : formatYen(row.avgActual)}</td>
+          <td class="${tone(row.avgSendan)}">${row.avgSendan === null ? "—" : formatYen(row.avgSendan)}</td>
+          <td class="${tone(row.avgExpected)}">${row.avgExpected === null ? "—" : formatYen(row.avgExpected)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+  return header + "<tbody>" + body + "</tbody>";
+}
+
+function formatSigned(value) {
+  if (!Number.isFinite(Number(value))) return "0";
+  const n = Number(value);
+  if (n > 0) return `+${n}`;
+  return String(n);
 }
 
 function renderSummary(summary) {
@@ -427,6 +608,9 @@ function renderSelectedDay() {
     const specialDateChip = day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : "";
     const opportunityChip = day.opportunity.active ? buildOpportunityChip(day.opportunity) : "";
 
+    const confidence = day.confidence || getConfidence(day.record);
+    const confidenceToneClass = getToneClass(confidence.tone);
+
     refs.selectedDayPanel.innerHTML = `
       <div class="selected-top tier-${day.rating.tier}">
         <div>
@@ -437,6 +621,16 @@ function renderSelectedDay() {
           <span>${day.rating.label}</span>
           <strong>${day.rating.text}</strong>
         </div>
+      </div>
+
+      <div class="confidence-panel ${confidenceToneClass}">
+        <div class="confidence-head">
+          <span class="confidence-kicker">信頼度</span>
+          <strong class="confidence-level">${confidence.stars}</strong>
+          <span class="confidence-label">${confidence.label}</span>
+        </div>
+        <p class="confidence-note">${confidence.note}</p>
+        <p class="confidence-sample">サンプル数: <strong>${confidence.sample}日</strong></p>
       </div>
 
       <div class="selected-stats">
