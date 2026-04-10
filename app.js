@@ -39,6 +39,7 @@ const refs = {
   recentEntries: document.getElementById("recentEntries"),
   rankingLists: document.getElementById("rankingLists"),
   syncBadgeText: document.getElementById("syncBadgeText"),
+  syncNowButton: document.getElementById("syncNowButton"),
   resultForm: document.getElementById("resultForm"),
   playDateInput: document.getElementById("playDateInput"),
   profitInput: document.getElementById("profitInput"),
@@ -126,6 +127,10 @@ function wireEvents() {
   });
 
   refs.retrySyncButton.addEventListener("click", async () => {
+    await hydrateRemoteDashboard(true);
+  });
+
+  refs.syncNowButton.addEventListener("click", async () => {
     await hydrateRemoteDashboard(true);
   });
 
@@ -620,6 +625,7 @@ async function hydrateRemoteDashboard(forceMessage = false) {
     message: "Google Sheets に接続しています..."
   };
   refs.retrySyncButton.disabled = true;
+  refs.syncNowButton.disabled = true;
   render();
 
   try {
@@ -651,6 +657,7 @@ async function hydrateRemoteDashboard(forceMessage = false) {
     setFormStatus("Sheets 同期に失敗したため、いったんローカル保存で継続します。", "warn");
   } finally {
     refs.retrySyncButton.disabled = false;
+    refs.syncNowButton.disabled = false;
     render();
   }
 }

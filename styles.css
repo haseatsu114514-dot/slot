@@ -112,6 +112,7 @@ a {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 22px;
+  align-items: center;
 }
 
 .hero-chip,
@@ -128,6 +129,21 @@ a {
 .hero-chip-label {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.hero-sync-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.hero-sync-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .page-content {
@@ -358,6 +374,8 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  min-height: 22px;
+  margin-bottom: 2px;
 }
 
 .day-top-right {
@@ -365,6 +383,7 @@ a {
   align-items: center;
   gap: 6px;
   margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .day-card:hover {
@@ -380,6 +399,8 @@ a {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--muted);
+  min-width: 1.4em;
+  text-align: right;
 }
 
 .day-marker {
@@ -399,9 +420,11 @@ a {
   border-radius: 999px;
   font-size: 0.62rem;
   font-weight: 800;
+  line-height: 1;
   color: var(--text);
   background: rgba(8, 10, 16, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
 }
 
 .day-rating {
