@@ -326,24 +326,34 @@ function getAggregateEntriesMap() {
   // remote が来ている場合は remote + local (未同期ぶん) のみを使い、
   // それ以外は SEED + local をベースにする。
   const hasRemote = Array.isArray(state.remoteEntries) && state.remoteEntries.length > 0;
-  const baseEntries = hasRemote ? state.remoteEntries : [];
-  const localOnly = state.localEntries.filter((entry) => {
-    if (!entry || !entry.kanshi) return false;
-    if (!hasRemote) return true;
-    // remote に同じ targetDate のエントリが居るなら既にシートに入っている
-    return !state.remoteEntries.some(
-      (remote) => remote && remote.targetDate === entry.targetDate && remote.kanshi === entry.kanshi
-    );
-  });
-  const extra = [...baseEntries, ...localOnly].filter(
-    (entry) => entry && entry.kanshi && Number.isFinite(Number(entry.profit))
-  );
+
+  // targetDate をキーに重複排除（同じ日付を何度も保存したケースを消す）。
+  // createdAt が新しいほうを採用する。
+  const dedupeByDate = (entries) => {
+    const map = new Map();
+    for (const entry of entries) {
+      if (!entry || !entry.kanshi) continue;
+      if (!Number.isFinite(Number(entry.profit))) continue;
+      const key = entry.targetDate || `${entry.id || Math.random()}`;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, entry);
+        continue;
+      }
+      const incomingCreated = String(entry.createdAt || "");
+      const existingCreated = String(existing.createdAt || "");
+      if (incomingCreated.localeCompare(existingCreated) > 0) {
+        map.set(key, entry);
+      }
+    }
+    return Array.from(map.values());
+  };
 
   if (hasRemote) {
-    // remote がある場合はシートが正。seed は使わない（二重カウント防止）
-    return buildEntriesMap({}, extra);
+    const merged = [...state.remoteEntries, ...state.localEntries];
+    return buildEntriesMap({}, dedupeByDate(merged));
   }
-  return buildEntriesMap(SEED_MONTHLY_ENTRIES, extra);
+  return buildEntriesMap(SEED_MONTHLY_ENTRIES, dedupeByDate(state.localEntries));
 }
 
 function renderAggregates(records) {
@@ -372,23 +382,31 @@ function buildStemBranchTable(rows, headerLabel) {
     (acc, row) => {
       acc.wins += row.wins;
       acc.losses += row.losses;
-      acc.rating += row.rating;
       acc.total += row.total;
       acc.days += row.days;
       return acc;
     },
-    { wins: 0, losses: 0, rating: 0, total: 0, days: 0 }
+    { wins: 0, losses: 0, total: 0, days: 0 }
   );
   const totalDaily = totals.days > 0 ? Math.round(totals.total / totals.days) : 0;
   const totalHourly = totals.days > 0 ? Math.round(totals.total / totals.days / 3.5) : 0;
+  const totalWinRate = totals.days > 0 ? (totals.wins / totals.days) * 100 : null;
+  const totalLossRate = totals.days > 0 ? (totals.losses / totals.days) * 100 : null;
+
+  const formatRate = (rate) => (rate === null ? "—" : `${rate.toFixed(0)}%`);
+  const rateClass = (rate, positiveWhenHigh) => {
+    if (rate === null) return "";
+    if (rate >= 55) return positiveWhenHigh ? "is-plus" : "is-minus";
+    if (rate <= 45) return positiveWhenHigh ? "is-minus" : "is-plus";
+    return "";
+  };
 
   const header = `
     <thead>
       <tr>
         <th class="col-label">${headerLabel}</th>
-        <th>勝</th>
-        <th>負</th>
-        <th>評</th>
+        <th>勝率</th>
+        <th>負率</th>
         <th>総収支</th>
         <th>日給</th>
         <th>時給<small>(3.5h)</small></th>
@@ -399,7 +417,8 @@ function buildStemBranchTable(rows, headerLabel) {
 
   const body = rows
     .map((row) => {
-      const ratingClass = row.rating > 0 ? "is-plus" : row.rating < 0 ? "is-minus" : "";
+      const winRate = row.days > 0 ? (row.wins / row.days) * 100 : null;
+      const lossRate = row.days > 0 ? (row.losses / row.days) * 100 : null;
       const totalClass = row.total > 0 ? "is-plus" : row.total < 0 ? "is-minus" : "";
       const dailyClass = row.daily > 0 ? "is-plus" : row.daily < 0 ? "is-minus" : "";
       const hourlyClass = row.hourly > 0 ? "is-plus" : row.hourly < 0 ? "is-minus" : "";
@@ -409,9 +428,8 @@ function buildStemBranchTable(rows, headerLabel) {
             <span class="agg-key">${row.key}</span>
             ${row.label ? `<small>(${row.label})</small>` : ""}
           </th>
-          <td>${row.wins}</td>
-          <td>${row.losses}</td>
-          <td class="${ratingClass}">${formatSigned(row.rating)}</td>
+          <td class="${rateClass(winRate, true)}">${formatRate(winRate)}</td>
+          <td class="${rateClass(lossRate, false)}">${formatRate(lossRate)}</td>
           <td class="${totalClass}">${formatYen(row.total)}</td>
           <td class="${dailyClass}">${formatYen(row.daily)}</td>
           <td class="${hourlyClass}">${formatYen(row.hourly)}</td>
@@ -425,10 +443,9 @@ function buildStemBranchTable(rows, headerLabel) {
   const foot = `
     <tfoot>
       <tr>
-        <th class="col-label">計</th>
-        <td>${totals.wins}</td>
-        <td>${totals.losses}</td>
-        <td class="${totals.rating > 0 ? "is-plus" : totals.rating < 0 ? "is-minus" : ""}">${formatSigned(totals.rating)}</td>
+        <th class="col-label">全体</th>
+        <td class="${rateClass(totalWinRate, true)}">${formatRate(totalWinRate)}</td>
+        <td class="${rateClass(totalLossRate, false)}">${formatRate(totalLossRate)}</td>
         <td class="${footClass}">${formatYen(totals.total)}</td>
         <td class="${totalDaily > 0 ? "is-plus" : totalDaily < 0 ? "is-minus" : ""}">${formatYen(totalDaily)}</td>
         <td class="${totalHourly > 0 ? "is-plus" : totalHourly < 0 ? "is-minus" : ""}">${formatYen(totalHourly)}</td>
