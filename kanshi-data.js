@@ -109,6 +109,23 @@ export const MONTH_BRANCH_STATUS_MAP = Object.freeze({
   "卯": ["冲"]
 });
 
+// 月支ごとの季節的な微補正。期待収支が月ごとにのっぺりしないようにほんの少しだけ揺らす。
+// 大きく動かしたくないので -0.6 〜 +0.6 の範囲に抑える。
+export const MONTH_BRANCH_SEASONAL = Object.freeze({
+  "寅": Object.freeze({ adjustment: 0.4, label: "立春の勢いで追い風", tone: "good" }),
+  "卯": Object.freeze({ adjustment: -0.2, label: "春の芽吹きで集中しづらい", tone: "caution" }),
+  "辰": Object.freeze({ adjustment: 0.3, label: "土が整う安定期", tone: "good" }),
+  "巳": Object.freeze({ adjustment: 0.5, label: "火が立ち上がり勢いに乗る", tone: "good" }),
+  "午": Object.freeze({ adjustment: -0.3, label: "陽気が強すぎて判断が鈍る", tone: "caution" }),
+  "未": Object.freeze({ adjustment: -0.4, label: "土が淀みやすい時期", tone: "caution" }),
+  "申": Object.freeze({ adjustment: 0.3, label: "金の切れ味で引き締まる", tone: "good" }),
+  "酉": Object.freeze({ adjustment: 0.5, label: "金が最も澄む月", tone: "good" }),
+  "戌": Object.freeze({ adjustment: -0.2, label: "土の凝りで流れが重い", tone: "caution" }),
+  "亥": Object.freeze({ adjustment: 0.4, label: "水が巡り始める好機", tone: "good" }),
+  "子": Object.freeze({ adjustment: -0.3, label: "水が冷えて動きが鈍る", tone: "caution" }),
+  "丑": Object.freeze({ adjustment: -0.2, label: "土が固まり動きにくい", tone: "caution" })
+});
+
 export const WEEKDAY_EFFECTS = Object.freeze({
   0: Object.freeze({ adjustment: -0.1, label: "日曜はやや逆風", shortLabel: "日曜弱め", tone: "caution" }),
   1: Object.freeze({ adjustment: 0, label: "月曜は中立", shortLabel: "月曜中立", tone: "neutral" }),
@@ -405,14 +422,26 @@ export function getMonthAdjustmentForStatuses(statuses = []) {
   return clamp(total, -2, 0);
 }
 
+export function getMonthSeasonalAdjustment(monthKanshi) {
+  if (!monthKanshi) return { adjustment: 0, label: "", tone: "neutral" };
+  const branch = monthKanshi.slice(1);
+  const seasonal = MONTH_BRANCH_SEASONAL[branch];
+  if (!seasonal) return { adjustment: 0, label: "", tone: "neutral" };
+  return { adjustment: seasonal.adjustment, label: seasonal.label, tone: seasonal.tone };
+}
+
 export function getMonthContext(dateKey) {
   const monthKanshi = getMonthKanshiForDateKey(dateKey);
   const statuses = getMonthStatusesForKanshi(monthKanshi);
-  const adjustment = getMonthAdjustmentForStatuses(statuses);
+  const statusAdjustment = getMonthAdjustmentForStatuses(statuses);
+  const seasonal = getMonthSeasonalAdjustment(monthKanshi);
+  // 月ごとに期待収支が動くよう季節補正を加算。±0.6 程度に抑えているので大きくは動かない。
+  const adjustment = clamp(statusAdjustment + seasonal.adjustment, -2.5, 0.6);
 
   return {
     kanshi: monthKanshi,
     statuses,
+    seasonal,
     adjustment
   };
 }

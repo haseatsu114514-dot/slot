@@ -320,40 +320,73 @@ function renderMobileStickyDetail(records) {
   }
 }
 
+function normalizeTargetDate(value) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const text = String(value).trim();
+  if (!text) return "";
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+  }
+  const slashMatch = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (slashMatch) {
+    return `${slashMatch[1]}-${slashMatch[2].padStart(2, "0")}-${slashMatch[3].padStart(2, "0")}`;
+  }
+  return text;
+}
+
+function getDedupedAggregateEntries() {
+  const hasRemote = Array.isArray(state.remoteEntries) && state.remoteEntries.length > 0;
+  const source = hasRemote
+    ? [...state.remoteEntries, ...state.localEntries]
+    : [...state.localEntries];
+
+  // targetDate をキーに重複排除。createdAt が新しい方を優先。
+  const map = new Map();
+  for (const raw of source) {
+    if (!raw || !raw.kanshi) continue;
+    if (!Number.isFinite(Number(raw.profit))) continue;
+    const normalizedDate = normalizeTargetDate(raw.targetDate);
+    if (!normalizedDate) continue;
+    const entry = { ...raw, targetDate: normalizedDate };
+    const key = normalizedDate;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, entry);
+      continue;
+    }
+    const incomingCreated = String(entry.createdAt || "");
+    const existingCreated = String(existing.createdAt || "");
+    if (incomingCreated.localeCompare(existingCreated) > 0) {
+      map.set(key, entry);
+    }
+  }
+  return { entries: Array.from(map.values()), hasRemote };
+}
+
 function getAggregateEntriesMap() {
   // シートと同期できているときは remoteEntries がシート全件を持っているので、
   // SEED_MONTHLY_ENTRIES と足すと二重カウントになる。
   // remote が来ている場合は remote + local (未同期ぶん) のみを使い、
   // それ以外は SEED + local をベースにする。
-  const hasRemote = Array.isArray(state.remoteEntries) && state.remoteEntries.length > 0;
-
-  // targetDate をキーに重複排除（同じ日付を何度も保存したケースを消す）。
-  // createdAt が新しいほうを採用する。
-  const dedupeByDate = (entries) => {
-    const map = new Map();
-    for (const entry of entries) {
-      if (!entry || !entry.kanshi) continue;
-      if (!Number.isFinite(Number(entry.profit))) continue;
-      const key = entry.targetDate || `${entry.id || Math.random()}`;
-      const existing = map.get(key);
-      if (!existing) {
-        map.set(key, entry);
-        continue;
-      }
-      const incomingCreated = String(entry.createdAt || "");
-      const existingCreated = String(existing.createdAt || "");
-      if (incomingCreated.localeCompare(existingCreated) > 0) {
-        map.set(key, entry);
-      }
-    }
-    return Array.from(map.values());
-  };
-
+  const { entries, hasRemote } = getDedupedAggregateEntries();
   if (hasRemote) {
-    const merged = [...state.remoteEntries, ...state.localEntries];
-    return buildEntriesMap({}, dedupeByDate(merged));
+    return buildEntriesMap({}, entries);
   }
-  return buildEntriesMap(SEED_MONTHLY_ENTRIES, dedupeByDate(state.localEntries));
+  return buildEntriesMap(SEED_MONTHLY_ENTRIES, entries);
+}
+
+function getAggregateDiagnostic() {
+  const remoteCount = Array.isArray(state.remoteEntries) ? state.remoteEntries.length : 0;
+  const localCount = Array.isArray(state.localEntries) ? state.localEntries.length : 0;
+  const { entries } = getDedupedAggregateEntries();
+  return { remoteCount, localCount, uniqueCount: entries.length };
 }
 
 function renderAggregates(records) {
@@ -521,8 +554,14 @@ function formatSigned(value) {
 }
 
 function renderSummary(summary) {
+  const diag = getAggregateDiagnostic();
+  const sampleNote = diag.remoteCount > 0
+    ? `シート ${diag.remoteCount} 件 / 重複除外後 ${diag.uniqueCount} 日分`
+    : `ローカル ${diag.localCount} 件 / 重複除外後 ${diag.uniqueCount} 日分`;
+
   refs.summaryCards.innerHTML = [
-    buildSummaryCard("日数", summary.total, "静的に3か月固定", "is-neutral"),
+    buildSummaryCard("カレンダー日数", summary.total, "表示中の3か月ぶん", "is-neutral"),
+    buildSummaryCard("実績サンプル", diag.uniqueCount, sampleNote, "is-neutral"),
     buildSummaryCard("★ 完璧", summary.perfect, "スコア9", "is-perfect"),
     buildSummaryCard("◎ 絶好", summary.special, "スコア7-8", "is-special"),
     buildSummaryCard("○ 行くべき", summary.go, "スコア5-6", "is-go"),
@@ -715,7 +754,7 @@ function renderSelectedDay() {
         <div class="selected-stat">
           <span>月干支</span>
           <strong>${day.monthContext.kanshi || "-"}</strong>
-          <small>${day.monthContext.statuses.join(" / ") || "補正なし"}</small>
+          <small>${day.monthContext.seasonal?.label || day.monthContext.statuses.join(" / ") || "補正なし"} ${getScoreText(day.monthContext.adjustment)}</small>
         </div>
         <div class="selected-stat">
           <span>質感ステータス</span>
