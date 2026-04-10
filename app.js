@@ -54,6 +54,12 @@ const refs = {
 
 document.addEventListener("DOMContentLoaded", () => {
   refs.playDateInput.value = state.selectedDateKey;
+  setFormStatus(
+    CONFIG.syncEndpoint
+      ? "Google Sheets に接続しています。初回同期が終わるとここに結果が出ます。"
+      : "Google Sheets の Web アプリ URL が未設定です。今はローカル保存のみです。",
+    CONFIG.syncEndpoint ? "info" : "warn"
+  );
   updateFormPreview();
   render();
   wireEvents();
