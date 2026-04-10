@@ -320,6 +320,85 @@ a {
   font-family: "Zen Old Mincho", serif;
 }
 
+/* ============================= Collapsible Panel ============================= */
+
+.collapsible-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.collapsible-panel .aggregate-grid,
+.collapsible-panel > .calendar-grid,
+.collapsible-panel > .result-form,
+.collapsible-panel > :not(summary) {
+  padding: 0 18px 18px;
+}
+
+@media (min-width: 720px) {
+  .collapsible-panel > :not(summary) {
+    padding: 0 22px 22px;
+  }
+}
+
+.collapsible-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 20px;
+  transition: background 0.16s ease;
+}
+
+@media (min-width: 720px) {
+  .collapsible-summary {
+    padding: 22px;
+    border-radius: 24px;
+  }
+}
+
+.collapsible-summary:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-summary h2 {
+  margin: 4px 0 4px;
+  font-size: 1.2rem;
+}
+
+@media (min-width: 720px) {
+  .collapsible-summary h2 {
+    font-size: 1.4rem;
+  }
+}
+
+.collapsible-summary .panel-note {
+  display: block;
+  margin-top: 4px;
+}
+
+.collapsible-arrow {
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+
+details[open] .collapsible-arrow {
+  transform: rotate(-135deg);
+  margin-top: 10px;
+}
+
 /* ============================= Aggregates ============================= */
 
 .panel-aggregates .panel-head {
@@ -1293,5 +1372,110 @@ a {
 
 .empty-text {
   margin: 0;
+  color: var(--muted);
+}
+
+/* ============================= Mobile Sticky Detail ============================= */
+
+.mobile-sticky-detail {
+  display: none;
+}
+
+@media (max-width: 719px) {
+  .mobile-sticky-detail {
+    display: block;
+    position: sticky;
+    top: 8px;
+    z-index: 30;
+    margin: 0 0 12px;
+  }
+
+  .mobile-sticky-detail[hidden] {
+    display: none;
+  }
+}
+
+.mobile-sticky-card {
+  width: 100%;
+  border: none;
+  border-radius: 16px;
+  padding: 10px 14px;
+  background: rgba(18, 22, 34, 0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  text-align: left;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.mobile-sticky-card:active {
+  transform: scale(0.98);
+}
+
+.mobile-sticky-card.tier-perfect {
+  border-color: rgba(255, 215, 110, 0.5);
+}
+.mobile-sticky-card.tier-special {
+  border-color: rgba(255, 160, 210, 0.45);
+}
+.mobile-sticky-card.tier-go {
+  border-color: rgba(140, 220, 170, 0.45);
+}
+.mobile-sticky-card.tier-hold {
+  border-color: rgba(220, 210, 140, 0.4);
+}
+.mobile-sticky-card.tier-avoid {
+  border-color: rgba(200, 120, 120, 0.4);
+}
+
+.mobile-sticky-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mobile-sticky-date {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.mobile-sticky-kanshi {
+  font-family: "Zen Old Mincho", serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.mobile-sticky-rating {
+  margin-left: auto;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.mobile-sticky-meta {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.mobile-sticky-confidence {
+  font-weight: 600;
+}
+
+.mobile-sticky-confidence.is-good {
+  color: #87e0a0;
+}
+.mobile-sticky-confidence.is-caution {
+  color: #f0c164;
+}
+.mobile-sticky-confidence.is-neutral {
   color: var(--muted);
 }

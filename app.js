@@ -51,6 +51,7 @@ const refs = {
   branchTable: document.getElementById("branchTable"),
   elementTable: document.getElementById("elementTable"),
   ratingSummaryTable: document.getElementById("ratingSummaryTable"),
+  mobileStickyDetail: document.getElementById("mobileStickyDetail"),
   syncBadgeText: document.getElementById("syncBadgeText"),
   syncNowButton: document.getElementById("syncNowButton"),
   resultForm: document.getElementById("resultForm"),
@@ -84,13 +85,9 @@ function selectDate(dateKey) {
   refs.playDateInput.value = state.selectedDateKey;
   updateFormPreview();
   render();
-  // On narrow screens, bring the detail panel into view so the user
-  // doesn't have to scroll manually after tapping a day.
-  if (window.matchMedia && window.matchMedia("(max-width: 960px)").matches) {
-    if (refs.selectedDayPanel) {
-      refs.selectedDayPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
+  // No auto-scroll: a sticky compact detail bar on mobile and the full
+  // detail panel above the calendar keep the current selection visible
+  // without moving the page, so the user can keep tapping days freely.
 }
 
 function wireEvents() {
@@ -162,6 +159,16 @@ function wireEvents() {
 
   refs.syncNowButton?.addEventListener("click", async () => {
     await hydrateRemoteDashboard(true);
+  });
+
+  // Tap the compact mobile bar to jump to the full day-detail panel.
+  refs.mobileStickyDetail?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-scroll-to='detail']");
+    if (!button) return;
+    event.preventDefault();
+    if (refs.selectedDayPanel) {
+      refs.selectedDayPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
 
   window.addEventListener("resize", hideDayHoverCard);
@@ -283,12 +290,59 @@ function render() {
   renderAggregates(records);
   renderCalendar(months);
   renderSelectedDay();
+  renderMobileStickyDetail(records);
   renderRecentEntries();
   renderRankings(records);
 }
 
+function renderMobileStickyDetail(records) {
+  if (!refs.mobileStickyDetail) return;
+  try {
+    const day = buildDayInfo(state.selectedDateKey, records, CONFIG);
+    const weekday = WEEKDAYS[day.weekday];
+    const confidence = day.confidence || getConfidence(day.record);
+    refs.mobileStickyDetail.innerHTML = `
+      <button class="mobile-sticky-card tier-${day.rating.tier}" type="button" data-scroll-to="detail">
+        <div class="mobile-sticky-main">
+          <span class="mobile-sticky-date">${day.month}/${day.day}(${weekday})</span>
+          <strong class="mobile-sticky-kanshi">${day.kanshi}</strong>
+          <span class="mobile-sticky-rating">${day.rating.label}</span>
+        </div>
+        <div class="mobile-sticky-meta">
+          <span>実績 ${formatYen(day.record.avg)}</span>
+          <span class="mobile-sticky-confidence ${getToneClass(confidence.tone)}">${confidence.stars} ${confidence.shortLabel}</span>
+        </div>
+      </button>
+    `;
+    refs.mobileStickyDetail.hidden = false;
+  } catch (error) {
+    refs.mobileStickyDetail.hidden = true;
+  }
+}
+
 function getAggregateEntriesMap() {
-  const extra = getAllEntries().filter((entry) => entry && entry.kanshi && Number.isFinite(Number(entry.profit)));
+  // シートと同期できているときは remoteEntries がシート全件を持っているので、
+  // SEED_MONTHLY_ENTRIES と足すと二重カウントになる。
+  // remote が来ている場合は remote + local (未同期ぶん) のみを使い、
+  // それ以外は SEED + local をベースにする。
+  const hasRemote = Array.isArray(state.remoteEntries) && state.remoteEntries.length > 0;
+  const baseEntries = hasRemote ? state.remoteEntries : [];
+  const localOnly = state.localEntries.filter((entry) => {
+    if (!entry || !entry.kanshi) return false;
+    if (!hasRemote) return true;
+    // remote に同じ targetDate のエントリが居るなら既にシートに入っている
+    return !state.remoteEntries.some(
+      (remote) => remote && remote.targetDate === entry.targetDate && remote.kanshi === entry.kanshi
+    );
+  });
+  const extra = [...baseEntries, ...localOnly].filter(
+    (entry) => entry && entry.kanshi && Number.isFinite(Number(entry.profit))
+  );
+
+  if (hasRemote) {
+    // remote がある場合はシートが正。seed は使わない（二重カウント防止）
+    return buildEntriesMap({}, extra);
+  }
   return buildEntriesMap(SEED_MONTHLY_ENTRIES, extra);
 }
 
@@ -500,7 +554,6 @@ function renderUpcoming(upcomingDays) {
 }
 
 function renderCalendar(months) {
-  const [selectedYear, selectedMonth] = state.selectedDateKey.split("-").map(Number);
   refs.calendarGrid.innerHTML = months
     .map((month) => {
       const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
@@ -544,10 +597,8 @@ function renderCalendar(months) {
           `;
         })
         .join("");
-      const isOpen = month.year === selectedYear && month.month === selectedMonth;
-
       return `
-        <details class="month-accordion" ${isOpen ? "open" : ""}>
+        <details class="month-accordion" open>
           <summary class="month-accordion-summary">
             <div class="month-accordion-title">
               <p class="month-kicker">${month.year}</p>

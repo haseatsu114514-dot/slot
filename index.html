@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260411d">
+    <link rel="stylesheet" href="./styles.css?v=20260411f">
   </head>
   <body>
     <div class="page-shell">
@@ -35,6 +35,9 @@
       </header>
 
       <main class="page-content">
+        <!-- モバイル専用: カレンダーを見ながら選択日の概要を常に見られるスティッキーバー -->
+        <div id="mobileStickyDetail" class="mobile-sticky-detail" hidden></div>
+
         <section class="overview-grid">
           <article class="panel panel-stat">
             <div class="panel-head">
@@ -65,43 +68,17 @@
           </article>
         </section>
 
-        <section class="panel panel-aggregates">
-          <div class="panel-head">
-            <div>
-              <p class="panel-kicker">Stem &amp; Branch</p>
-              <h2>天干・地支 集計</h2>
-            </div>
-            <span class="panel-note">勝=収支プラスの日数 / 負=収支マイナスの日数 / 評=勝−負</span>
-          </div>
-          <div class="aggregate-grid">
-            <div class="aggregate-block">
-              <h3 class="aggregate-title">天干（10干）</h3>
-              <div class="aggregate-table-wrap">
-                <table class="aggregate-table" id="stemTable"></table>
-              </div>
-            </div>
-            <div class="aggregate-block">
-              <h3 class="aggregate-title">地支（12支）</h3>
-              <div class="aggregate-table-wrap">
-                <table class="aggregate-table" id="branchTable"></table>
-              </div>
-            </div>
-            <div class="aggregate-block">
-              <h3 class="aggregate-title">五行サマリー（天/地/評）</h3>
-              <div class="aggregate-table-wrap">
-                <table class="aggregate-table element-table" id="elementTable"></table>
-              </div>
-            </div>
-            <div class="aggregate-block">
-              <h3 class="aggregate-title">評価別 平均収支</h3>
-              <div class="aggregate-table-wrap">
-                <table class="aggregate-table rating-table" id="ratingSummaryTable"></table>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <section class="calendar-detail-grid">
+          <aside class="panel panel-detail">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Day Detail</p>
+                <h2>日付詳細</h2>
+              </div>
+            </div>
+            <div id="selectedDayPanel" class="selected-day-panel"></div>
+          </aside>
+
           <article class="panel panel-calendar">
             <div class="panel-head">
               <div>
@@ -119,16 +96,6 @@
             <div id="calendarGrid" class="calendar-grid"></div>
             <div id="dayHoverCard" class="day-hover-card" hidden></div>
           </article>
-
-          <aside class="panel panel-detail">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Day Detail</p>
-                <h2>日付詳細</h2>
-              </div>
-            </div>
-            <div id="selectedDayPanel" class="selected-day-panel"></div>
-          </aside>
         </section>
 
         <section class="panel panel-form">
@@ -168,6 +135,43 @@
           </form>
         </section>
 
+        <details class="panel panel-aggregates collapsible-panel">
+          <summary class="collapsible-summary">
+            <div>
+              <p class="panel-kicker">Stem &amp; Branch</p>
+              <h2>天干・地支 集計 / 五行サマリー</h2>
+              <span class="panel-note">毎回見るわけではない詳細統計。タップで展開</span>
+            </div>
+            <span class="collapsible-arrow" aria-hidden="true"></span>
+          </summary>
+          <div class="aggregate-grid">
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">天干（10干）</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table" id="stemTable"></table>
+              </div>
+            </div>
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">地支（12支）</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table" id="branchTable"></table>
+              </div>
+            </div>
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">五行サマリー（天/地/評）</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table element-table" id="elementTable"></table>
+              </div>
+            </div>
+            <div class="aggregate-block">
+              <h3 class="aggregate-title">評価別 平均収支</h3>
+              <div class="aggregate-table-wrap">
+                <table class="aggregate-table rating-table" id="ratingSummaryTable"></table>
+              </div>
+            </div>
+          </div>
+        </details>
+
       </main>
     </div>
 
@@ -182,6 +186,6 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260411d"></script>
+    <script type="module" src="./app.js?v=20260411f"></script>
   </body>
 </html>
