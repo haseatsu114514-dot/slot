@@ -430,12 +430,40 @@ export function getMonthSeasonalAdjustment(monthKanshi) {
   return { adjustment: seasonal.adjustment, label: seasonal.label, tone: seasonal.tone };
 }
 
-export function getMonthContext(dateKey) {
+// 「自分が得意な月 / 苦手な月」を過去成績から算出した補正を返す。
+// personalMap は { 1: {adjustment, sample, avg}, 2: ..., 12: ... } の形。
+// 過去実績がその月に十分ない場合は 0 を返す。
+export function getPersonalMonthAdjustment(dateKey, personalMap) {
+  if (!personalMap) return null;
+  const calendarMonth = parseInt(String(dateKey).slice(5, 7), 10);
+  if (!calendarMonth) return null;
+  const entry = personalMap[calendarMonth];
+  if (!entry || !Number.isFinite(entry.adjustment)) return null;
+  const adj = entry.adjustment;
+  let label;
+  let tone;
+  if (adj > 0.15) {
+    label = `過去${calendarMonth}月は好調（平均 ${formatYen(entry.avg)}・${entry.sample}日）`;
+    tone = "good";
+  } else if (adj < -0.15) {
+    label = `過去${calendarMonth}月はやや苦手（平均 ${formatYen(entry.avg)}・${entry.sample}日）`;
+    tone = "caution";
+  } else {
+    label = `過去${calendarMonth}月はほぼ平均（平均 ${formatYen(entry.avg)}・${entry.sample}日）`;
+    tone = "neutral";
+  }
+  return { adjustment: adj, label, tone, sample: entry.sample, avg: entry.avg, source: "personal" };
+}
+
+export function getMonthContext(dateKey, options = {}) {
   const monthKanshi = getMonthKanshiForDateKey(dateKey);
   const statuses = getMonthStatusesForKanshi(monthKanshi);
   const statusAdjustment = getMonthAdjustmentForStatuses(statuses);
-  const seasonal = getMonthSeasonalAdjustment(monthKanshi);
-  // 月ごとに期待収支が動くよう季節補正を加算。±0.6 程度に抑えているので大きくは動かない。
+
+  // 過去成績ベースの「得意/苦手」補正があれば優先。無ければ 0。
+  const personal = getPersonalMonthAdjustment(dateKey, options.monthlyPerformance);
+  const seasonal = personal || { adjustment: 0, label: "過去実績がまだ少ない月", tone: "neutral" };
+
   const adjustment = clamp(statusAdjustment + seasonal.adjustment, -2.5, 0.6);
 
   return {
@@ -629,7 +657,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
-  const monthContext = getMonthContext(dateKey);
+  const monthContext = getMonthContext(dateKey, { monthlyPerformance: config.monthlyPerformance });
   const specialDateContext = getSpecialDateContext(date);
   const opportunity = getOpportunityStatus(baseRecord);
   const provisionalScore = clamp(baseRecord.score + monthContext.adjustment + specialDateContext.adjustment, -6, 9);

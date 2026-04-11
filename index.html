@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260411h">
+    <link rel="stylesheet" href="./styles.css?v=20260411i">
   </head>
   <body>
     <div class="page-shell">
@@ -69,16 +69,6 @@
         </section>
 
         <section class="calendar-detail-grid">
-          <aside class="panel panel-detail">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Day Detail</p>
-                <h2>日付詳細</h2>
-              </div>
-            </div>
-            <div id="selectedDayPanel" class="selected-day-panel"></div>
-          </aside>
-
           <article class="panel panel-calendar">
             <div class="panel-head">
               <div>
@@ -96,6 +86,16 @@
             <div id="calendarGrid" class="calendar-grid"></div>
             <div id="dayHoverCard" class="day-hover-card" hidden></div>
           </article>
+
+          <aside class="panel panel-detail">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Day Detail</p>
+                <h2>日付詳細</h2>
+              </div>
+            </div>
+            <div id="selectedDayPanel" class="selected-day-panel"></div>
+          </aside>
         </section>
 
         <section class="panel panel-form">
@@ -186,6 +186,6 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260411h"></script>
+    <script type="module" src="./app.js?v=20260411i"></script>
   </body>
 </html>

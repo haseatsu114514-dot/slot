@@ -211,8 +211,9 @@ function getAllEntries() {
 }
 
 function getMonthModels(records) {
+  const activeConfig = getActiveConfig();
   return getMonthSequence(CONFIG.startMonth, CONFIG.monthCount).map(({ year, month }) =>
-    buildCalendarMonth(year, month, records, CONFIG)
+    buildCalendarMonth(year, month, records, activeConfig)
   );
 }
 
@@ -298,7 +299,7 @@ function render() {
 function renderMobileStickyDetail(records) {
   if (!refs.mobileStickyDetail) return;
   try {
-    const day = buildDayInfo(state.selectedDateKey, records, CONFIG);
+    const day = buildDayInfo(state.selectedDateKey, records, getActiveConfig());
     const weekday = WEEKDAYS[day.weekday];
     const confidence = day.confidence || getConfidence(day.record);
     refs.mobileStickyDetail.innerHTML = `
@@ -387,6 +388,53 @@ function getAggregateDiagnostic() {
   const localCount = Array.isArray(state.localEntries) ? state.localEntries.length : 0;
   const { entries } = getDedupedAggregateEntries();
   return { remoteCount, localCount, uniqueCount: entries.length };
+}
+
+// 過去成績から「カレンダー月ごとの得意/苦手」を算出する。
+// 各月の平均収支を全体平均と比較し、差分に応じて -0.6 〜 +0.6 の補正を付ける。
+// データが少ない月 (2日未満) はニュートラル扱い。
+function computeMonthlyPerformanceMap() {
+  const { entries } = getDedupedAggregateEntries();
+  if (!entries.length) return {};
+
+  const byMonth = new Map();
+  const allProfits = [];
+  for (const entry of entries) {
+    const profit = Number(entry.profit);
+    if (!Number.isFinite(profit)) continue;
+    const date = entry.targetDate;
+    if (!date || date.length < 7) continue;
+    const month = parseInt(date.slice(5, 7), 10);
+    if (!month) continue;
+    if (!byMonth.has(month)) byMonth.set(month, []);
+    byMonth.get(month).push(profit);
+    allProfits.push(profit);
+  }
+  if (allProfits.length === 0) return {};
+
+  const overallAvg = allProfits.reduce((acc, v) => acc + v, 0) / allProfits.length;
+  // 差分のスケール係数。±30000 のズレで ±0.5 ほど動く感覚。
+  const SCALE = 60000;
+
+  const map = {};
+  for (const [month, values] of byMonth.entries()) {
+    if (values.length < 2) continue; // 2日未満はサンプル不足
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const delta = avg - overallAvg;
+    const rawAdjustment = delta / SCALE;
+    const adjustment = Math.max(-0.6, Math.min(0.6, Math.round(rawAdjustment * 10) / 10));
+    map[month] = {
+      adjustment,
+      sample: values.length,
+      avg: Math.round(avg)
+    };
+  }
+  return map;
+}
+
+function getActiveConfig() {
+  // CONFIG をベースに、過去成績ベースの月補正マップを注入して返す。
+  return { ...CONFIG, monthlyPerformance: computeMonthlyPerformanceMap() };
 }
 
 function renderAggregates(records) {
@@ -691,7 +739,7 @@ function renderSelectedDay() {
   if (!refs.selectedDayPanel) return;
   try {
     const records = getComputedRecords();
-    const day = buildDayInfo(state.selectedDateKey, records, CONFIG);
+    const day = buildDayInfo(state.selectedDateKey, records, getActiveConfig());
     const weekday = WEEKDAYS[day.weekday];
     const liveDelta = day.record.baseScore - day.record.seedScore;
     const liveDeltaLabel = liveDelta === 0 ? "入力反映なし" : liveDelta > 0 ? `入力反映で +${liveDelta}` : `入力反映で ${liveDelta}`;
@@ -803,7 +851,7 @@ function renderRecentEntries() {
   refs.recentEntries.innerHTML = entries
     .slice(0, 8)
     .map((entry) => {
-      const info = buildDayInfo(entry.targetDate, records, CONFIG);
+      const info = buildDayInfo(entry.targetDate, records, getActiveConfig());
       const rating = info.rating;
       return `
         <article class="recent-entry">
@@ -876,7 +924,7 @@ function buildRankingItem(item) {
 function updateFormPreview() {
   const dateKey = refs.playDateInput.value || CONFIG.anchorDate;
   const records = getComputedRecords();
-  const info = buildDayInfo(dateKey, records, CONFIG);
+  const info = buildDayInfo(dateKey, records, getActiveConfig());
 
   refs.formPreview.innerHTML = `
     <span class="preview-pill tier-${info.rating.tier}">${dateKey}</span>
@@ -1094,7 +1142,7 @@ async function saveResult() {
 function addLocalEntry(entry) {
   const recordsBefore = getComputedRecords();
   const nextRecords = applyEntriesToRecords(recordsBefore, [entry]);
-  entry.liveScore = buildDayInfo(entry.targetDate, nextRecords, CONFIG).record.score;
+  entry.liveScore = buildDayInfo(entry.targetDate, nextRecords, getActiveConfig()).record.score;
   state.localEntries.unshift(entry);
   persistLocalEntries();
 }
@@ -1238,7 +1286,7 @@ function positionDayHoverCard(anchor) {
 function showDayHoverCard(dateKey, anchor) {
   if (!refs.dayHoverCard || window.matchMedia("(hover: none)").matches) return;
   const records = getComputedRecords();
-  const day = buildDayInfo(dateKey, records, CONFIG);
+  const day = buildDayInfo(dateKey, records, getActiveConfig());
   refs.dayHoverCard.innerHTML = buildHoverCardMarkup(day);
   refs.dayHoverCard.hidden = false;
   refs.dayHoverCard.setAttribute("aria-hidden", "false");
