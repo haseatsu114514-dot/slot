@@ -320,6 +320,72 @@ a {
   font-family: "Zen Old Mincho", serif;
 }
 
+.upcoming-more {
+  display: grid;
+  gap: 8px;
+}
+
+.upcoming-more-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.upcoming-more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.upcoming-more-summary:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+
+.upcoming-more-close {
+  display: none;
+}
+
+.upcoming-more[open] .upcoming-more-open {
+  display: none;
+}
+
+.upcoming-more[open] .upcoming-more-close {
+  display: inline;
+}
+
+.upcoming-more-arrow {
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+  flex: 0 0 auto;
+  margin-bottom: 3px;
+}
+
+.upcoming-more[open] .upcoming-more-arrow {
+  transform: rotate(-135deg);
+  margin-bottom: 0;
+  margin-top: 3px;
+}
+
+.upcoming-more-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* ============================= Collapsible Panel ============================= */
 
 .collapsible-panel {
@@ -567,6 +633,8 @@ details[open] .collapsible-arrow {
     top: 18px;
     max-height: calc(100vh - 40px);
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-behavior: auto;
   }
 }
 
@@ -686,13 +754,29 @@ details[open] .collapsible-arrow {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
+  width: 100%;
+}
+
+.weekday-row > *,
+.month-day-grid > * {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+
+.weekday-row {
+  margin-top: 10px;
+  margin-bottom: 2px;
 }
 
 .weekday {
   text-align: center;
   color: var(--muted);
-  font-size: 0.7rem;
-  padding-bottom: 4px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+  display: block;
 }
 
 .weekday-0 {
@@ -705,6 +789,7 @@ details[open] .collapsible-arrow {
 
 .day-spacer {
   min-height: 92px;
+  visibility: hidden;
 }
 
 .day-card {
@@ -721,6 +806,7 @@ details[open] .collapsible-arrow {
   cursor: pointer;
   transition: transform 0.16s ease, border-color 0.16s ease;
   position: relative;
+  box-sizing: border-box;
 }
 
 @media (min-width: 720px) {
