@@ -755,13 +755,7 @@ details[open] .collapsible-arrow {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
   width: 100%;
-}
-
-.weekday-row > *,
-.month-day-grid > * {
-  min-width: 0;
-  width: 100%;
-  margin: 0;
+  box-sizing: border-box;
 }
 
 .weekday-row {
@@ -776,7 +770,7 @@ details[open] .collapsible-arrow {
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 4px 0;
-  display: block;
+  min-width: 0;
 }
 
 .weekday-0 {
@@ -787,13 +781,9 @@ details[open] .collapsible-arrow {
   color: #93c7ff;
 }
 
-.day-spacer {
-  min-height: 92px;
-  visibility: hidden;
-}
-
 .day-card {
   min-height: 92px;
+  min-width: 0;
   padding: 6px 5px 5px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -807,15 +797,12 @@ details[open] .collapsible-arrow {
   transition: transform 0.16s ease, border-color 0.16s ease;
   position: relative;
   box-sizing: border-box;
+  margin: 0;
 }
 
 @media (min-width: 720px) {
-  .day-spacer,
   .day-card {
     min-height: 108px;
-  }
-
-  .day-card {
     padding: 8px 7px 7px;
     border-radius: 14px;
     gap: 4px;
