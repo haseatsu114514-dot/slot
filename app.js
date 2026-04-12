@@ -27,6 +27,7 @@ import {
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
 const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
+const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
 
 const state = {
@@ -39,7 +40,9 @@ const state = {
     message: CONFIG.syncEndpoint ? "Google Sheets に接続しています..." : "シート未設定のため保留中です。"
   },
   upcomingExpanded: false,
-  calendarFilter: loadCalendarFilter()
+  calendarFilter: loadCalendarFilter(),
+  goal: loadGoal(),
+  editingEntryId: null
 };
 
 const refs = {
@@ -66,7 +69,8 @@ const refs = {
   retrySyncButton: document.getElementById("retrySyncButton"),
   saveButton: document.getElementById("saveButton"),
   jumpTodayButton: document.getElementById("jumpTodayButton"),
-  calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]"))
+  calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]")),
+  performancePanel: document.getElementById("performancePanel")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -208,6 +212,18 @@ function wireEvents() {
   refs.jumpTodayButton?.addEventListener("click", () => {
     jumpToToday();
   });
+
+  refs.performancePanel?.addEventListener("submit", (event) => {
+    const form = event.target.closest("form[data-action='set-goal']");
+    if (!form) return;
+    event.preventDefault();
+    const value = Number(new FormData(form).get("goal"));
+    state.goal.monthly = Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+    persistGoal();
+    renderPerformance();
+  });
+
+  refs.recentEntries?.addEventListener("click", handleRecentEntryClick);
 }
 
 function syncCalendarFilterButtons() {
@@ -239,6 +255,65 @@ function jumpToToday() {
     if (monthAcc && !monthAcc.open) monthAcc.open = true;
     target.scrollIntoView({ behavior: "smooth", block: "center" });
   });
+}
+
+function loadGoal() {
+  try {
+    const raw = window.localStorage.getItem(GOAL_STORAGE_KEY);
+    if (!raw) return { monthly: 0 };
+    const parsed = JSON.parse(raw);
+    const monthly = Number(parsed?.monthly);
+    return { monthly: Number.isFinite(monthly) ? monthly : 0 };
+  } catch (error) {
+    return { monthly: 0 };
+  }
+}
+
+function persistGoal() {
+  try {
+    window.localStorage.setItem(GOAL_STORAGE_KEY, JSON.stringify(state.goal));
+  } catch (error) {
+    /* ignore */
+  }
+}
+
+function computeMonthlyProgress() {
+  const now = new Date();
+  const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const { entries } = getDedupedAggregateEntries();
+  let total = 0;
+  let days = 0;
+  let wins = 0;
+  for (const entry of entries) {
+    const date = normalizeTargetDate(entry.targetDate);
+    if (!date.startsWith(prefix)) continue;
+    const profit = Number(entry.profit);
+    if (!Number.isFinite(profit)) continue;
+    total += profit;
+    days += 1;
+    if (profit > 0) wins += 1;
+  }
+  return { total, days, wins, monthPrefix: prefix };
+}
+
+function computeStreak() {
+  const { entries } = getDedupedAggregateEntries();
+  const sorted = entries
+    .map((entry) => ({
+      date: normalizeTargetDate(entry.targetDate),
+      profit: Number(entry.profit)
+    }))
+    .filter((entry) => entry.date && Number.isFinite(entry.profit))
+    .sort((left, right) => (left.date < right.date ? 1 : -1));
+  if (!sorted.length) return { kind: "none", count: 0 };
+  const latestSign = Math.sign(sorted[0].profit);
+  if (latestSign === 0) return { kind: "even", count: 1 };
+  let count = 0;
+  for (const entry of sorted) {
+    if (Math.sign(entry.profit) === latestSign) count += 1;
+    else break;
+  }
+  return { kind: latestSign > 0 ? "win" : "lose", count };
 }
 
 function loadCalendarFilter() {
@@ -392,6 +467,7 @@ function render() {
 
   refs.syncBadgeText.textContent = getSyncLabel();
   renderSummary(summary);
+  renderPerformance();
   renderUpcoming(upcomingDays);
   renderAggregates(records);
   renderCalendar(months);
@@ -399,6 +475,66 @@ function render() {
   renderMobileStickyDetail(records);
   renderRecentEntries();
   renderRankings(records);
+}
+
+function renderPerformance() {
+  if (!refs.performancePanel) return;
+  const progress = computeMonthlyProgress();
+  const streak = computeStreak();
+  const goal = Number(state.goal.monthly) || 0;
+  const ratio = goal > 0 ? Math.max(0, Math.min(1.2, progress.total / goal)) : 0;
+  const progressPct = Math.min(100, Math.round(ratio * 100));
+  const goalRemaining = goal > 0 ? goal - progress.total : 0;
+  const totalClass = progress.total > 0 ? "is-plus" : progress.total < 0 ? "is-minus" : "";
+
+  const streakLabel =
+    streak.kind === "win"
+      ? `連勝 ${streak.count}日`
+      : streak.kind === "lose"
+        ? `連敗 ${streak.count}日`
+        : streak.kind === "even"
+          ? "収支±0日"
+          : "実績なし";
+  const streakTone =
+    streak.kind === "win" ? "is-plus" : streak.kind === "lose" ? "is-minus" : "is-neutral";
+
+  const goalTone = goal <= 0 ? "is-neutral" : progress.total >= goal ? "is-plus" : "is-neutral";
+  const goalNote = goal <= 0
+    ? "月間目標を設定すると進捗が表示されます。"
+    : goalRemaining > 0
+      ? `目標まであと ${formatYen(goalRemaining)}`
+      : `目標超過 ${formatYen(progress.total - goal)}`;
+
+  const winRate = progress.days > 0 ? Math.round((progress.wins / progress.days) * 100) : null;
+
+  refs.performancePanel.innerHTML = `
+    <div class="performance-card performance-streak ${streakTone}">
+      <span class="performance-label">現在のストリーク</span>
+      <strong class="performance-value">${streakLabel}</strong>
+      <span class="performance-note">直近の記録順で計算</span>
+    </div>
+    <div class="performance-card performance-month">
+      <span class="performance-label">今月 (${progress.monthPrefix.replace("-", "/")})</span>
+      <strong class="performance-value ${totalClass}">${formatYen(progress.total)}</strong>
+      <span class="performance-note">${progress.days}日 / 勝率 ${winRate === null ? "—" : `${winRate}%`}</span>
+    </div>
+    <div class="performance-card performance-goal ${goalTone}">
+      <div class="performance-goal-head">
+        <span class="performance-label">月間目標</span>
+        <strong class="performance-value">${goal > 0 ? formatYen(goal) : "未設定"}</strong>
+      </div>
+      <div class="performance-goal-bar">
+        <div class="performance-goal-fill" style="width: ${progressPct}%"></div>
+      </div>
+      <div class="performance-goal-row">
+        <span class="performance-note">${goalNote}</span>
+        <form class="performance-goal-form" data-action="set-goal">
+          <input type="number" step="1000" name="goal" placeholder="目標額" value="${goal > 0 ? goal : ""}" aria-label="月間目標額" />
+          <button type="submit" class="performance-goal-submit">保存</button>
+        </form>
+      </div>
+    </div>
+  `;
 }
 
 function renderMobileStickyDetail(records) {
@@ -957,6 +1093,8 @@ function renderSelectedDay() {
       </div>
 
       <div class="tag-row">${specialDateChip}${opportunityChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
+
+      ${buildSameKanshiComparison(day.kanshi, day.dateKey)}
     `;
   } catch (error) {
     refs.selectedDayPanel.innerHTML = `
@@ -978,11 +1116,23 @@ function renderRecentEntries() {
     return;
   }
 
+  const localIdSet = new Set(state.localEntries.map((entry) => entry.id).filter(Boolean));
+
   refs.recentEntries.innerHTML = entries
-    .slice(0, 8)
+    .slice(0, 12)
     .map((entry) => {
       const info = buildDayInfo(entry.targetDate, records, getActiveConfig());
       const rating = info.rating;
+      const isLocal = localIdSet.has(entry.id);
+      const idAttr = entry.id ? entry.id : "";
+      const actions = isLocal
+        ? `
+          <div class="recent-entry-actions">
+            <button type="button" class="recent-entry-edit" data-action="edit-entry" data-entry-id="${idAttr}">編集</button>
+            <button type="button" class="recent-entry-delete" data-action="delete-entry" data-entry-id="${idAttr}">削除</button>
+          </div>
+        `
+        : `<div class="recent-entry-actions"><span class="recent-entry-badge-remote">Sheets</span></div>`;
       return `
         <article class="recent-entry">
           <div class="recent-entry-main">
@@ -1001,10 +1151,50 @@ function renderRecentEntries() {
             ${buildWeekdayChip(info.weekday, info.weekdayContext)}
           </div>
           ${entry.memo ? `<p class="recent-entry-note">${escapeHtml(entry.memo)}</p>` : ""}
+          ${actions}
         </article>
       `;
     })
     .join("");
+}
+
+function handleRecentEntryClick(event) {
+  const target = event.target.closest("[data-action]");
+  if (!target) return;
+  const id = target.dataset.entryId;
+  const action = target.dataset.action;
+  if (!id || !action) return;
+  const entry = state.localEntries.find((e) => e.id === id);
+  if (!entry) return;
+
+  if (action === "edit-entry") {
+    refs.playDateInput.value = entry.targetDate;
+    refs.profitInput.value = entry.profit;
+    refs.memoInput.value = entry.memo || "";
+    state.editingEntryId = id;
+    state.selectedDateKey = entry.targetDate;
+    updateFormPreview();
+    setFormStatus(`${entry.targetDate} の記録を編集中です。保存で上書きされます。`, "info");
+    if (refs.resultForm && refs.resultForm.scrollIntoView) {
+      refs.resultForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    render();
+    return;
+  }
+
+  if (action === "delete-entry") {
+    const ok = window.confirm(`${entry.targetDate} の記録を削除しますか？`);
+    if (!ok) return;
+    state.localEntries = state.localEntries.filter((e) => e.id !== id);
+    persistLocalEntries();
+    if (state.editingEntryId === id) {
+      state.editingEntryId = null;
+      refs.resultForm?.reset();
+      refs.playDateInput.value = state.selectedDateKey;
+    }
+    setFormStatus(`${entry.targetDate} の記録を削除しました。`, "info");
+    render();
+  }
 }
 
 function renderRankings(records) {
@@ -1125,6 +1315,65 @@ function buildWeekdayChip(weekday, weekdayContext) {
   return `<span class="tag ${getToneClass(weekdayContext.tone)}">${weekdayContext.shortLabel} ${getScoreText(weekdayContext.adjustment)}</span>`;
 }
 
+function buildSameKanshiComparison(kanshi, currentDateKey) {
+  if (!kanshi) return "";
+  const { entries } = getDedupedAggregateEntries();
+  const matches = entries
+    .filter((entry) => entry.kanshi === kanshi && normalizeTargetDate(entry.targetDate) !== currentDateKey)
+    .map((entry) => ({
+      date: normalizeTargetDate(entry.targetDate),
+      profit: Number(entry.profit),
+      memo: entry.memo || ""
+    }))
+    .filter((entry) => Number.isFinite(entry.profit))
+    .sort((left, right) => (left.date < right.date ? 1 : -1))
+    .slice(0, 5);
+
+  if (!matches.length) {
+    return `
+      <section class="same-kanshi">
+        <h4>同じ ${escapeHtml(kanshi)} の過去</h4>
+        <p class="empty-text">過去の記録はまだありません。</p>
+      </section>
+    `;
+  }
+
+  const totals = matches.reduce(
+    (acc, m) => {
+      acc.sum += m.profit;
+      if (m.profit > 0) acc.wins += 1;
+      if (m.profit < 0) acc.losses += 1;
+      return acc;
+    },
+    { sum: 0, wins: 0, losses: 0 }
+  );
+  const avg = Math.round(totals.sum / matches.length);
+  const avgClass = avg > 0 ? "is-plus" : avg < 0 ? "is-minus" : "";
+
+  const rows = matches
+    .map(
+      (m) => `
+        <li class="same-kanshi-item">
+          <span class="same-kanshi-date">${m.date}</span>
+          <span class="same-kanshi-profit ${m.profit >= 0 ? "is-plus" : "is-minus"}">${formatYen(m.profit)}</span>
+          ${m.memo ? `<span class="same-kanshi-memo">${escapeHtml(m.memo)}</span>` : ""}
+        </li>
+      `
+    )
+    .join("");
+
+  return `
+    <section class="same-kanshi">
+      <h4>同じ ${escapeHtml(kanshi)} の過去 <small>${matches.length}件</small></h4>
+      <div class="same-kanshi-summary">
+        <span>平均 <strong class="${avgClass}">${formatYen(avg)}</strong></span>
+        <span>勝 ${totals.wins} / 負 ${totals.losses}</span>
+      </div>
+      <ul class="same-kanshi-list">${rows}</ul>
+    </section>
+  `;
+}
+
 function formatScoreValue(score) {
   if (!Number.isFinite(Number(score))) return "0";
   const numericScore = Number(score);
@@ -1226,9 +1475,14 @@ async function saveResult() {
     return;
   }
 
+  const existingEntry = state.editingEntryId
+    ? state.localEntries.find((e) => e.id === state.editingEntryId)
+    : null;
+
   const entry = {
-    id: createEntryId(),
-    createdAt: new Date().toISOString(),
+    id: existingEntry ? existingEntry.id : createEntryId(),
+    createdAt: existingEntry ? existingEntry.createdAt : new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     targetDate,
     kanshi: getKanshiForDateKey(targetDate, CONFIG),
     profit,
@@ -1237,15 +1491,17 @@ async function saveResult() {
 
   refs.saveButton.disabled = true;
   state.selectedDateKey = targetDate;
+  const wasEditing = state.editingEntryId === entry.id;
 
   try {
-    if (CONFIG.syncEndpoint) {
+    if (CONFIG.syncEndpoint && !wasEditing) {
       const synced = await postEntryToSheets(entry);
       if (synced) {
         refs.resultForm.reset();
         refs.playDateInput.value = targetDate;
         updateFormPreview();
         setFormStatus("Google Sheets に保存し、カレンダーにも反映しました。", "success");
+        state.editingEntryId = null;
         render();
         return;
       }
@@ -1255,7 +1511,13 @@ async function saveResult() {
     refs.resultForm.reset();
     refs.playDateInput.value = targetDate;
     updateFormPreview();
-    setFormStatus("保存しました。同期 URL を設定するとシートにも反映されます。", "info");
+    setFormStatus(
+      wasEditing
+        ? "ローカル記録を更新しました。Sheets 側には反映されないため、必要なら再入力してください。"
+        : "保存しました。同期 URL を設定するとシートにも反映されます。",
+      "info"
+    );
+    state.editingEntryId = null;
     render();
   } catch (error) {
     addLocalEntry(entry);
@@ -1263,6 +1525,7 @@ async function saveResult() {
     refs.playDateInput.value = targetDate;
     updateFormPreview();
     setFormStatus("通信に失敗したため一時的に保存しました。後で同期を再試行できます。", "warn");
+    state.editingEntryId = null;
     render();
   } finally {
     refs.saveButton.disabled = false;
@@ -1273,7 +1536,12 @@ function addLocalEntry(entry) {
   const recordsBefore = getComputedRecords();
   const nextRecords = applyEntriesToRecords(recordsBefore, [entry]);
   entry.liveScore = buildDayInfo(entry.targetDate, nextRecords, getActiveConfig()).record.score;
-  state.localEntries.unshift(entry);
+  const existingIndex = state.localEntries.findIndex((e) => e.id === entry.id);
+  if (existingIndex >= 0) {
+    state.localEntries[existingIndex] = entry;
+  } else {
+    state.localEntries.unshift(entry);
+  }
   persistLocalEntries();
 }
 
