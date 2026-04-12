@@ -26,6 +26,7 @@ import {
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
+const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
 
 const state = {
@@ -37,7 +38,8 @@ const state = {
     mode: CONFIG.syncEndpoint ? "loading" : "offline",
     message: CONFIG.syncEndpoint ? "Google Sheets に接続しています..." : "シート未設定のため保留中です。"
   },
-  upcomingExpanded: false
+  upcomingExpanded: false,
+  calendarFilter: loadCalendarFilter()
 };
 
 const refs = {
@@ -62,7 +64,9 @@ const refs = {
   formPreview: document.getElementById("formPreview"),
   formStatus: document.getElementById("formStatus"),
   retrySyncButton: document.getElementById("retrySyncButton"),
-  saveButton: document.getElementById("saveButton")
+  saveButton: document.getElementById("saveButton"),
+  jumpTodayButton: document.getElementById("jumpTodayButton"),
+  calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]"))
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -188,6 +192,92 @@ function wireEvents() {
 
   window.addEventListener("resize", hideDayHoverCard);
   window.addEventListener("scroll", hideDayHoverCard, true);
+
+  refs.calendarFilterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const filter = button.dataset.filter;
+      if (!filter || state.calendarFilter === filter) return;
+      state.calendarFilter = filter;
+      persistCalendarFilter();
+      syncCalendarFilterButtons();
+      render();
+    });
+  });
+  syncCalendarFilterButtons();
+
+  refs.jumpTodayButton?.addEventListener("click", () => {
+    jumpToToday();
+  });
+}
+
+function syncCalendarFilterButtons() {
+  refs.calendarFilterButtons.forEach((button) => {
+    const active = button.dataset.filter === state.calendarFilter;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function jumpToToday() {
+  const todayKey = getTodayDateKey();
+  const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
+  if (!months.length) return;
+  const first = months[0];
+  const last = months[months.length - 1];
+  const firstKey = `${first.year}-${String(first.month).padStart(2, "0")}-01`;
+  const lastKey = `${last.year}-${String(last.month).padStart(2, "0")}-${String(getDaysInMonth(last.year, last.month)).padStart(2, "0")}`;
+  if (todayKey < firstKey || todayKey > lastKey) {
+    setFormStatus("今日の日付は表示期間の外です。", "warn");
+    return;
+  }
+  selectDate(todayKey);
+  // Open the target month's accordion if closed, then scroll the day card into view.
+  window.requestAnimationFrame(() => {
+    const target = refs.calendarGrid.querySelector(`[data-date-key="${todayKey}"]`);
+    if (!target) return;
+    const monthAcc = target.closest("details.month-accordion");
+    if (monthAcc && !monthAcc.open) monthAcc.open = true;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
+function loadCalendarFilter() {
+  try {
+    const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (raw && ["all", "go", "top", "recorded"].includes(raw)) return raw;
+  } catch (error) {
+    /* ignore */
+  }
+  return "all";
+}
+
+function persistCalendarFilter() {
+  try {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, state.calendarFilter);
+  } catch (error) {
+    /* ignore */
+  }
+}
+
+function matchesCalendarFilter(day, recordedDates) {
+  if (state.calendarFilter === "all") return true;
+  if (state.calendarFilter === "go") return day.record.score >= RATING_THRESHOLDS.goMin;
+  if (state.calendarFilter === "top") return day.record.score >= RATING_THRESHOLDS.specialMin;
+  if (state.calendarFilter === "recorded") return recordedDates?.has(day.dateKey);
+  return true;
+}
+
+function getRecordedDateSet() {
+  const set = new Set();
+  for (const entry of state.remoteEntries) {
+    const key = normalizeTargetDate(entry?.targetDate);
+    if (key) set.add(key);
+  }
+  for (const entry of state.localEntries) {
+    const key = normalizeTargetDate(entry?.targetDate);
+    if (key) set.add(key);
+  }
+  return set;
 }
 
 function loadLocalEntries() {
@@ -681,6 +771,9 @@ function renderUpcoming(upcomingDays) {
 }
 
 function renderCalendar(months) {
+  const todayKey = getTodayDateKey();
+  const todayMonth = todayKey.slice(0, 7);
+  const recordedDates = getRecordedDateSet();
   refs.calendarGrid.innerHTML = months
     .map((month) => {
       const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
@@ -698,28 +791,31 @@ function renderCalendar(months) {
       const dayCells = month.cells
         .map((day, index) => {
           if (!day) {
-            // First-row leading spacers before the first day-of-month.
-            // Use an explicit grid-column-start on the first real day card instead
-            // of rendering empty nodes so no column can collapse or drift.
             return "";
           }
           const selectedClass = day.dateKey === state.selectedDateKey ? "is-selected" : "";
+          const todayClass = day.dateKey === todayKey ? "is-today" : "";
+          const hasEntry = recordedDates.has(day.dateKey);
+          const entryClass = hasEntry ? "has-entry" : "";
+          const dimClass = matchesCalendarFilter(day, recordedDates) ? "" : "is-dimmed";
           const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label}`);
-          // Day 1 is explicitly placed at its weekday column (1-indexed grid column).
-          // All subsequent days flow in order.
           const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
           const markerHtml = day.specialDateContext.statuses.length
             ? `<span class="day-marker-corner is-caution" aria-hidden="true">!</span>`
             : "";
+          const todayBadge = day.dateKey === todayKey ? `<span class="day-today-badge" aria-hidden="true">Today</span>` : "";
+          const entryBadge = hasEntry ? `<span class="day-entry-badge" aria-hidden="true" title="実績入力あり">●</span>` : "";
           return `
             <button
-              class="day-card tier-${day.rating.tier} ${selectedClass}"
+              class="day-card tier-${day.rating.tier} ${selectedClass} ${todayClass} ${entryClass} ${dimClass}"
               type="button"
               data-date-key="${day.dateKey}"
               aria-label="${scoreSummary}"
               title="${scoreSummary}"${columnStart}
             >
               ${markerHtml}
+              ${todayBadge}
+              ${entryBadge}
               <span class="day-number">${day.day}</span>
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
@@ -731,8 +827,12 @@ function renderCalendar(months) {
           `;
         })
         .join("");
+      // Auto-open only the month containing today (fall back to first month if today is out-of-range).
+      const monthKey = `${month.year}-${String(month.month).padStart(2, "0")}`;
+      const isTodayMonth = monthKey === todayMonth;
+      const openAttr = isTodayMonth || (todayMonth < `${months[0].year}-${String(months[0].month).padStart(2, "0")}` && month === months[0]) ? " open" : "";
       return `
-        <details class="month-accordion" open>
+        <details class="month-accordion"${openAttr}>
           <summary class="month-accordion-summary">
             <div class="month-accordion-title">
               <p class="month-kicker">${month.year}</p>

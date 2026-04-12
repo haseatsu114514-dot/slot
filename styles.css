@@ -665,6 +665,62 @@ details[open] .collapsible-arrow {
   gap: 12px;
 }
 
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.calendar-filter {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.filter-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.filter-chip:hover {
+  color: var(--text);
+}
+
+.filter-chip.is-active {
+  background: rgba(221, 187, 114, 0.22);
+  color: var(--gold-soft);
+}
+
+.today-jump-button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(123, 179, 228, 0.55);
+  background: rgba(123, 179, 228, 0.14);
+  color: #cfe6fb;
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.today-jump-button:hover {
+  background: rgba(123, 179, 228, 0.26);
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -836,6 +892,71 @@ details[open] .collapsible-arrow {
 .day-card.is-selected {
   border-color: var(--gold);
   box-shadow: inset 0 0 0 1px rgba(221, 187, 114, 0.48);
+}
+
+.day-card.is-today {
+  border-color: rgba(123, 179, 228, 0.85);
+  box-shadow: inset 0 0 0 2px rgba(123, 179, 228, 0.55);
+}
+
+.day-card.is-today.is-selected {
+  box-shadow:
+    inset 0 0 0 2px rgba(123, 179, 228, 0.55),
+    inset 0 0 0 1px rgba(221, 187, 114, 0.7);
+}
+
+.day-card.is-dimmed {
+  opacity: 0.32;
+  filter: saturate(0.7);
+}
+
+.day-card.is-dimmed:hover {
+  opacity: 0.55;
+}
+
+.day-today-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 0.48rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #0f1014;
+  background: rgba(123, 179, 228, 0.92);
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.day-entry-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(221, 187, 114, 0.85);
+  box-shadow: 0 0 0 2px rgba(221, 187, 114, 0.18);
+  pointer-events: none;
+  z-index: 1;
+  font-size: 0;
+}
+
+@media (min-width: 720px) {
+  .day-today-badge {
+    top: 5px;
+    left: 5px;
+    font-size: 0.56rem;
+    padding: 2px 7px;
+  }
+  .day-entry-badge {
+    bottom: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+  }
 }
 
 .day-number {
