@@ -191,10 +191,18 @@ a {
   padding: 18px;
 }
 
+.panel.panel-calendar {
+  padding: 14px 10px;
+}
+
 @media (min-width: 720px) {
   .panel {
     padding: 22px;
     border-radius: 24px;
+  }
+
+  .panel.panel-calendar {
+    padding: 22px;
   }
 }
 
@@ -725,7 +733,13 @@ details[open] .collapsible-arrow {
 }
 
 .month-card {
-  padding: 0 16px 16px;
+  padding: 0 8px 14px;
+}
+
+@media (min-width: 720px) {
+  .month-card {
+    padding: 0 16px 16px;
+  }
 }
 
 .month-pillar {
@@ -782,9 +796,9 @@ details[open] .collapsible-arrow {
 }
 
 .day-card {
-  min-height: 92px;
+  min-height: 96px;
   min-width: 0;
-  padding: 6px 5px 5px;
+  padding: 6px 3px 6px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
@@ -798,6 +812,7 @@ details[open] .collapsible-arrow {
   position: relative;
   box-sizing: border-box;
   margin: 0;
+  overflow: hidden;
 }
 
 @media (min-width: 720px) {
@@ -814,34 +829,6 @@ details[open] .collapsible-arrow {
   }
 }
 
-.day-card-top {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 4px;
-  min-height: 18px;
-}
-
-.day-card-top .day-score-badge {
-  justify-self: start;
-}
-
-.day-card-top .day-number {
-  justify-self: center;
-}
-
-.day-card-top .day-marker,
-.day-card-top .day-marker-placeholder {
-  justify-self: end;
-}
-
-.day-marker-placeholder {
-  width: 16px;
-  height: 16px;
-  display: inline-block;
-}
-
 .day-card:hover {
   transform: translateY(-2px);
 }
@@ -852,41 +839,48 @@ details[open] .collapsible-arrow {
 }
 
 .day-number {
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   font-weight: 800;
   color: var(--text);
-  min-width: 1.2em;
+  min-width: 1.4em;
   text-align: center;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  padding: 1px 0 2px;
 }
 
-.day-marker {
-  width: 16px;
-  height: 16px;
+.day-marker-corner {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 14px;
+  height: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 900;
   line-height: 1;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.08);
-  flex: 0 0 auto;
+  background: rgba(231, 185, 76, 0.22);
+  color: var(--gold-soft);
+  pointer-events: none;
+  z-index: 1;
 }
 
-.day-score-badge {
-  min-width: 30px;
-  padding: 2px 5px;
+.day-score-pill {
+  margin-top: 1px;
+  padding: 2px 6px;
   border-radius: 999px;
-  font-size: 0.52rem;
+  font-size: 0.54rem;
   font-weight: 800;
   line-height: 1;
   color: var(--text);
   background: rgba(8, 10, 16, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .day-rating {
@@ -923,14 +917,18 @@ details[open] .collapsible-arrow {
   .day-rating { font-size: 1.22rem; }
   .day-kanshi { font-size: 0.8rem; }
   .day-ts { font-size: 0.58rem; }
-  .day-score-badge {
-    min-width: 36px;
-    padding: 3px 6px;
-    font-size: 0.56rem;
+  .day-score-pill {
+    padding: 3px 7px;
+    font-size: 0.58rem;
   }
-  .day-number { font-size: 1rem; }
-  .day-marker { width: 18px; height: 18px; font-size: 0.7rem; }
-  .day-marker-placeholder { width: 18px; height: 18px; }
+  .day-number { font-size: 1.08rem; }
+  .day-marker-corner {
+    top: 5px;
+    right: 5px;
+    width: 16px;
+    height: 16px;
+    font-size: 0.64rem;
+  }
   .day-style, .day-opportunity {
     font-size: 0.54rem;
     padding: 3px 7px;
