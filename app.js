@@ -34,9 +34,10 @@ const state = {
   localEntries: loadLocalEntries(),
   selectedDateKey: INITIAL_SELECTED_DATE_KEY,
   sync: {
-    mode: CONFIG.syncEndpoint ? "loading" : "local",
-    message: CONFIG.syncEndpoint ? "Google Sheets に接続しています..." : "ローカルモードで動作中です。"
-  }
+    mode: CONFIG.syncEndpoint ? "loading" : "offline",
+    message: CONFIG.syncEndpoint ? "Google Sheets に接続しています..." : "シート未設定のため保留中です。"
+  },
+  upcomingExpanded: false
 };
 
 const refs = {
@@ -69,7 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setFormStatus(
     CONFIG.syncEndpoint
       ? "Google Sheets に接続しています。初回同期が終わるとここに結果が出ます。"
-      : "Google Sheets の Web アプリ URL が未設定です。今はローカル保存のみです。",
+      : "Google Sheets の Web アプリ URL が未設定です。保存は保留されます。",
     CONFIG.syncEndpoint ? "info" : "warn"
   );
   updateFormPreview();
@@ -85,9 +86,17 @@ function selectDate(dateKey) {
   refs.playDateInput.value = state.selectedDateKey;
   updateFormPreview();
   render();
-  // No auto-scroll: a sticky compact detail bar on mobile and the full
-  // detail panel above the calendar keep the current selection visible
-  // without moving the page, so the user can keep tapping days freely.
+  // Reset the sticky detail panel's internal scroll so that switching days
+  // always starts from the top of the new day's detail, avoiding the
+  // "shift" users see when the previous scroll position is preserved.
+  if (refs.selectedDayPanel && refs.selectedDayPanel.parentElement) {
+    const panel = refs.selectedDayPanel.parentElement;
+    if (panel.scrollTo) {
+      panel.scrollTo({ top: 0, behavior: "auto" });
+    } else {
+      panel.scrollTop = 0;
+    }
+  }
 }
 
 function wireEvents() {
@@ -104,6 +113,12 @@ function wireEvents() {
     event.preventDefault();
     selectDate(button.dataset.dateKey);
   });
+
+  refs.upcomingList.addEventListener("toggle", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches("details.upcoming-more")) return;
+    state.upcomingExpanded = target.open;
+  }, true);
 
   refs.calendarGrid.addEventListener("mouseover", (event) => {
     const button = event.target.closest("[data-date-key]");
@@ -274,8 +289,8 @@ function getSummary(months) {
 function getSyncLabel() {
   if (state.sync.mode === "online") return "Google Sheets 同期中";
   if (state.sync.mode === "loading") return "Sheets 接続中";
-  if (state.sync.mode === "error") return "同期失敗 / ローカル保存";
-  return "ローカルモード";
+  if (state.sync.mode === "error") return "同期失敗";
+  return "同期未設定";
 }
 
 function render() {
@@ -381,13 +396,6 @@ function getAggregateEntriesMap() {
     return buildEntriesMap({}, entries);
   }
   return buildEntriesMap(SEED_MONTHLY_ENTRIES, entries);
-}
-
-function getAggregateDiagnostic() {
-  const remoteCount = Array.isArray(state.remoteEntries) ? state.remoteEntries.length : 0;
-  const localCount = Array.isArray(state.localEntries) ? state.localEntries.length : 0;
-  const { entries } = getDedupedAggregateEntries();
-  return { remoteCount, localCount, uniqueCount: entries.length };
 }
 
 // 過去成績から「カレンダー月ごとの得意/苦手」を算出する。
@@ -602,14 +610,8 @@ function formatSigned(value) {
 }
 
 function renderSummary(summary) {
-  const diag = getAggregateDiagnostic();
-  const sampleNote = diag.remoteCount > 0
-    ? `シート ${diag.remoteCount} 件 / 重複除外後 ${diag.uniqueCount} 日分`
-    : `ローカル ${diag.localCount} 件 / 重複除外後 ${diag.uniqueCount} 日分`;
-
   refs.summaryCards.innerHTML = [
     buildSummaryCard("カレンダー日数", summary.total, "表示中の3か月ぶん", "is-neutral"),
-    buildSummaryCard("実績サンプル", diag.uniqueCount, sampleNote, "is-neutral"),
     buildSummaryCard("★ 完璧", summary.perfect, "スコア9", "is-perfect"),
     buildSummaryCard("◎ 絶好", summary.special, "スコア7-8", "is-special"),
     buildSummaryCard("○ 行くべき", summary.go, "スコア5-6", "is-go"),
@@ -634,27 +636,48 @@ function renderUpcoming(upcomingDays) {
     return;
   }
 
-  refs.upcomingList.innerHTML = upcomingDays
-    .map((day) => {
-      const weekday = WEEKDAYS[day.weekday];
-      return `
-        <button class="upcoming-item tier-${day.rating.tier}" type="button" data-date-key="${day.dateKey}">
-          <span class="upcoming-date">${day.month}/${day.day}(${weekday})</span>
-          <strong class="upcoming-kanshi">${day.kanshi}</strong>
-          <span class="upcoming-copy">${day.rating.label} ${day.rating.text} / ${formatScoreValue(day.record.score)}点</span>
-          <span class="upcoming-meta">
-            ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)} (${day.record.days}日平均)
-          </span>
-          <span class="mini-tag-row">
-            ${day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : ""}
-            ${day.opportunity.active ? buildOpportunityChip(day.opportunity) : ""}
-            ${buildPlayStyleChip(day.playStyle)}
-            ${buildWeekdayChip(day.weekday, day.weekdayContext)}
-          </span>
-        </button>
-      `;
-    })
-    .join("");
+  const renderItem = (day) => {
+    const weekday = WEEKDAYS[day.weekday];
+    return `
+      <button class="upcoming-item tier-${day.rating.tier}" type="button" data-date-key="${day.dateKey}">
+        <span class="upcoming-date">${day.month}/${day.day}(${weekday})</span>
+        <strong class="upcoming-kanshi">${day.kanshi}</strong>
+        <span class="upcoming-copy">${day.rating.label} ${day.rating.text} / ${formatScoreValue(day.record.score)}点</span>
+        <span class="upcoming-meta">
+          ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)} (${day.record.days}日平均)
+        </span>
+        <span class="mini-tag-row">
+          ${day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : ""}
+          ${day.opportunity.active ? buildOpportunityChip(day.opportunity) : ""}
+          ${buildPlayStyleChip(day.playStyle)}
+          ${buildWeekdayChip(day.weekday, day.weekdayContext)}
+        </span>
+      </button>
+    `;
+  };
+
+  const [first, ...rest] = upcomingDays;
+  const primaryHtml = renderItem(first);
+
+  if (!rest.length) {
+    refs.upcomingList.innerHTML = primaryHtml;
+    return;
+  }
+
+  const openAttr = state.upcomingExpanded ? " open" : "";
+  refs.upcomingList.innerHTML = `
+    ${primaryHtml}
+    <details class="upcoming-more"${openAttr}>
+      <summary class="upcoming-more-summary">
+        <span class="upcoming-more-open">あと${rest.length}日を見る</span>
+        <span class="upcoming-more-close">閉じる</span>
+        <span class="upcoming-more-arrow" aria-hidden="true"></span>
+      </summary>
+      <div class="upcoming-more-list">
+        ${rest.map(renderItem).join("")}
+      </div>
+    </details>
+  `;
 }
 
 function renderCalendar(months) {
@@ -1017,7 +1040,7 @@ function getScoreText(score) {
 async function hydrateRemoteDashboard(forceMessage = false) {
   if (!CONFIG.syncEndpoint) {
     if (forceMessage) {
-      setFormStatus("Google Sheets の Web アプリ URL が未設定です。今はローカル保存のみです。", "info");
+      setFormStatus("Google Sheets の Web アプリ URL が未設定です。保存は保留されます。", "info");
     }
     return;
   }
@@ -1056,7 +1079,7 @@ async function hydrateRemoteDashboard(forceMessage = false) {
       mode: "error",
       message: "Google Sheets の同期に失敗しました。"
     };
-    setFormStatus("Sheets 同期に失敗したため、いったんローカル保存で継続します。", "warn");
+    setFormStatus("Sheets 同期に失敗しました。接続を再試行してください。", "warn");
   } finally {
     refs.retrySyncButton.disabled = false;
     if (refs.syncNowButton) refs.syncNowButton.disabled = false;
@@ -1125,14 +1148,14 @@ async function saveResult() {
     refs.resultForm.reset();
     refs.playDateInput.value = targetDate;
     updateFormPreview();
-    setFormStatus("ローカル保存しました。同期 URL を設定するとシートにも反映されます。", "info");
+    setFormStatus("保存しました。同期 URL を設定するとシートにも反映されます。", "info");
     render();
   } catch (error) {
     addLocalEntry(entry);
     refs.resultForm.reset();
     refs.playDateInput.value = targetDate;
     updateFormPreview();
-    setFormStatus("通信に失敗したためローカル保存しました。後で同期を再試行できます。", "warn");
+    setFormStatus("通信に失敗したため一時的に保存しました。後で同期を再試行できます。", "warn");
     render();
   } finally {
     refs.saveButton.disabled = false;
