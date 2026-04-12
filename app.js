@@ -696,17 +696,25 @@ function renderCalendar(months) {
       ].join("");
 
       const dayCells = month.cells
-        .map((day) => {
-          if (!day) return `<div class="day-spacer"></div>`;
+        .map((day, index) => {
+          if (!day) {
+            // First-row leading spacers before the first day-of-month.
+            // Use an explicit grid-column-start on the first real day card instead
+            // of rendering empty nodes so no column can collapse or drift.
+            return "";
+          }
           const selectedClass = day.dateKey === state.selectedDateKey ? "is-selected" : "";
           const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label}`);
+          // Day 1 is explicitly placed at its weekday column (1-indexed grid column).
+          // All subsequent days flow in order.
+          const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
           return `
             <button
               class="day-card tier-${day.rating.tier} ${selectedClass}"
               type="button"
               data-date-key="${day.dateKey}"
               aria-label="${scoreSummary}"
-              title="${scoreSummary}"
+              title="${scoreSummary}"${columnStart}
             >
               <div class="day-card-top">
                 <span class="day-score-badge">${formatCompactScore(day.record.score)}</span>
