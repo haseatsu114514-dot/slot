@@ -70,7 +70,9 @@ const refs = {
   saveButton: document.getElementById("saveButton"),
   jumpTodayButton: document.getElementById("jumpTodayButton"),
   calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]")),
-  performancePanel: document.getElementById("performancePanel")
+  performancePanel: document.getElementById("performancePanel"),
+  profitTrendChart: document.getElementById("profitTrendChart"),
+  kanshiHeatmap: document.getElementById("kanshiHeatmap")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -475,6 +477,7 @@ function render() {
   renderMobileStickyDetail(records);
   renderRecentEntries();
   renderRankings(records);
+  renderCharts();
 }
 
 function renderPerformance() {
@@ -1090,6 +1093,7 @@ function renderSelectedDay() {
 
       <div class="tag-row">${specialDateChip}${opportunityChip}${qualityChip}${weekdayChip}${monthTags}${recordTags}</div>
 
+      ${buildScoreBreakdownBar(day)}
       ${buildSameKanshiComparison(day.kanshi, day.dateKey)}
     `;
   } catch (error) {
@@ -1309,6 +1313,220 @@ function buildOpportunityChip(opportunity) {
 
 function buildWeekdayChip(weekday, weekdayContext) {
   return `<span class="tag ${getToneClass(weekdayContext.tone)}">${weekdayContext.shortLabel} ${getScoreText(weekdayContext.adjustment)}</span>`;
+}
+
+function renderCharts() {
+  renderProfitTrend();
+  renderKanshiHeatmap();
+}
+
+function renderProfitTrend() {
+  if (!refs.profitTrendChart) return;
+  const { entries } = getDedupedAggregateEntries();
+  const todayKey = getTodayDateKey();
+  const rangeDays = 30;
+  const dayMs = 86400000;
+
+  // Build an index of normalized entries by date key.
+  const byDate = new Map();
+  for (const entry of entries) {
+    const key = normalizeTargetDate(entry.targetDate);
+    const profit = Number(entry.profit);
+    if (!key || !Number.isFinite(profit)) continue;
+    byDate.set(key, (byDate.get(key) || 0) + profit);
+  }
+
+  // Build the last N days in order ending at today.
+  const anchor = new Date(`${todayKey}T12:00:00Z`);
+  const points = [];
+  let cum = 0;
+  for (let i = rangeDays - 1; i >= 0; i -= 1) {
+    const date = new Date(anchor.getTime() - i * dayMs);
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(date.getUTCDate()).padStart(2, "0");
+    const key = `${y}-${m}-${d}`;
+    const daily = byDate.get(key) || 0;
+    cum += daily;
+    points.push({ key, daily, cum });
+  }
+
+  const daily = points.map((p) => p.daily);
+  const cumVals = points.map((p) => p.cum);
+  const recorded = points.filter((p) => byDate.has(p.key)).length;
+  if (recorded === 0) {
+    refs.profitTrendChart.innerHTML = `<p class="empty-text">直近30日に記録がありません。</p>`;
+    return;
+  }
+
+  const width = 560;
+  const height = 180;
+  const padX = 10;
+  const padY = 14;
+  const innerW = width - padX * 2;
+  const innerH = height - padY * 2;
+  const cmin = Math.min(0, ...cumVals);
+  const cmax = Math.max(0, ...cumVals);
+  const cSpan = cmax - cmin || 1;
+  const scaleY = (v) => padY + innerH * (1 - (v - cmin) / cSpan);
+  const stepX = innerW / Math.max(1, points.length - 1);
+  const path = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${(padX + stepX * i).toFixed(1)},${scaleY(p.cum).toFixed(1)}`)
+    .join(" ");
+  const zeroY = scaleY(0).toFixed(1);
+  const dBars = Math.max(...daily.map((v) => Math.abs(v)), 1);
+  const barScale = innerH / 2 / dBars * 0.55;
+  const barsSvg = points
+    .map((p, i) => {
+      if (!p.daily) return "";
+      const x = padX + stepX * i - 1.5;
+      const h = Math.abs(p.daily) * barScale;
+      const y = p.daily > 0 ? scaleY(0) - h : scaleY(0);
+      const cls = p.daily > 0 ? "trend-bar-plus" : "trend-bar-minus";
+      return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="3" height="${Math.max(1, h).toFixed(1)}"></rect>`;
+    })
+    .join("");
+  const latestCum = points[points.length - 1].cum;
+  const tone = latestCum > 0 ? "is-plus" : latestCum < 0 ? "is-minus" : "";
+
+  refs.profitTrendChart.innerHTML = `
+    <div class="trend-head">
+      <span>累計 <strong class="${tone}">${formatYen(latestCum)}</strong></span>
+      <span>記録日数 ${recorded}</span>
+    </div>
+    <svg class="trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="直近30日の累計収支と日次収支">
+      <line x1="${padX}" y1="${zeroY}" x2="${width - padX}" y2="${zeroY}" class="trend-axis"></line>
+      ${barsSvg}
+      <path class="trend-line" d="${path}" fill="none"></path>
+    </svg>
+  `;
+}
+
+function renderKanshiHeatmap() {
+  if (!refs.kanshiHeatmap) return;
+  const { entries } = getDedupedAggregateEntries();
+  if (!entries.length) {
+    refs.kanshiHeatmap.innerHTML = `<p class="empty-text">過去記録がまだありません。</p>`;
+    return;
+  }
+
+  // Aggregate avg profit by kanshi×weekday; group by kanshi when total >= 1 record.
+  const cellsMap = new Map();
+  const kanshiSet = new Map(); // kanshi -> total count (for ranking)
+  for (const entry of entries) {
+    const date = normalizeTargetDate(entry.targetDate);
+    if (!date) continue;
+    const profit = Number(entry.profit);
+    if (!Number.isFinite(profit)) continue;
+    const parts = date.split("-").map((n) => parseInt(n, 10));
+    if (parts.length !== 3) continue;
+    const weekday = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12)).getUTCDay();
+    const key = `${entry.kanshi}__${weekday}`;
+    const current = cellsMap.get(key) || { sum: 0, count: 0 };
+    current.sum += profit;
+    current.count += 1;
+    cellsMap.set(key, current);
+    kanshiSet.set(entry.kanshi, (kanshiSet.get(entry.kanshi) || 0) + 1);
+  }
+
+  // Pick up to 12 most-recorded kanshi so the grid stays readable.
+  const kanshiColumns = [...kanshiSet.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([k]) => k);
+
+  if (!kanshiColumns.length) {
+    refs.kanshiHeatmap.innerHTML = `<p class="empty-text">過去記録がまだありません。</p>`;
+    return;
+  }
+
+  // Determine color range based on max abs avg across displayed cells.
+  let maxAbs = 1;
+  for (const kanshi of kanshiColumns) {
+    for (let w = 0; w < 7; w += 1) {
+      const data = cellsMap.get(`${kanshi}__${w}`);
+      if (!data) continue;
+      const avg = data.sum / data.count;
+      maxAbs = Math.max(maxAbs, Math.abs(avg));
+    }
+  }
+
+  const headerCols = kanshiColumns
+    .map((k) => `<div class="heatmap-col-head">${k}</div>`)
+    .join("");
+
+  const rows = WEEKDAYS.map((weekdayLabel, weekdayIndex) => {
+    const cells = kanshiColumns
+      .map((kanshi) => {
+        const data = cellsMap.get(`${kanshi}__${weekdayIndex}`);
+        if (!data) {
+          return `<div class="heatmap-cell is-empty" title="${kanshi}×${weekdayLabel}曜: 記録なし"></div>`;
+        }
+        const avg = Math.round(data.sum / data.count);
+        const ratio = Math.max(-1, Math.min(1, avg / maxAbs));
+        let bg;
+        if (ratio > 0) {
+          const alpha = 0.2 + ratio * 0.7;
+          bg = `rgba(143, 210, 109, ${alpha.toFixed(2)})`;
+        } else if (ratio < 0) {
+          const alpha = 0.2 + Math.abs(ratio) * 0.7;
+          bg = `rgba(222, 106, 99, ${alpha.toFixed(2)})`;
+        } else {
+          bg = "rgba(255,255,255,0.08)";
+        }
+        return `
+          <div class="heatmap-cell" style="background:${bg}" title="${kanshi}×${weekdayLabel}曜 平均${formatYen(avg)} (${data.count}件)">
+            <span class="heatmap-cell-value">${avg > 0 ? "+" : ""}${Math.round(avg / 1000)}k</span>
+          </div>
+        `;
+      })
+      .join("");
+    return `
+      <div class="heatmap-row-head weekday-${weekdayIndex}">${weekdayLabel}</div>
+      ${cells}
+    `;
+  }).join("");
+
+  const columnsStyle = `grid-template-columns: 36px repeat(${kanshiColumns.length}, minmax(36px, 1fr));`;
+  refs.kanshiHeatmap.innerHTML = `
+    <div class="heatmap" style="${columnsStyle}">
+      <div></div>
+      ${headerCols}
+      ${rows}
+    </div>
+  `;
+}
+
+function buildScoreBreakdownBar(day) {
+  // Stacked bar showing relative contribution (absolute values) of each adjustment.
+  const segments = [
+    { label: "日基準", value: Number(day.record.baseScore) || 0, cls: "seg-base" },
+    { label: "月", value: Number(day.monthContext.adjustment) || 0, cls: "seg-month" },
+    { label: "日付", value: Number(day.specialDateContext.adjustment) || 0, cls: "seg-special" },
+    { label: "質感", value: Number(day.playStyle.adjustment) || 0, cls: "seg-play" },
+    { label: "曜日", value: Number(day.weekdayContext.adjustment) || 0, cls: "seg-weekday" }
+  ];
+  const totalAbs = segments.reduce((acc, seg) => acc + Math.abs(seg.value), 0);
+  if (totalAbs <= 0) return "";
+  const bars = segments
+    .filter((seg) => Math.abs(seg.value) > 0)
+    .map((seg) => {
+      const pct = (Math.abs(seg.value) / totalAbs) * 100;
+      const sign = seg.value > 0 ? "+" : "";
+      return `
+        <div class="breakdown-seg ${seg.cls} ${seg.value < 0 ? "is-minus" : ""}" style="flex: ${pct.toFixed(2)};" title="${seg.label} ${sign}${seg.value}">
+          <span class="breakdown-label">${seg.label}</span>
+          <span class="breakdown-value">${sign}${seg.value}</span>
+        </div>
+      `;
+    })
+    .join("");
+  return `
+    <section class="score-breakdown">
+      <h4>スコア内訳</h4>
+      <div class="breakdown-bar">${bars}</div>
+    </section>
+  `;
 }
 
 function buildSameKanshiComparison(kanshi, currentDateKey) {

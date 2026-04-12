@@ -1906,6 +1906,178 @@ details[open] .collapsible-arrow {
   letter-spacing: 0.06em;
 }
 
+/* ============================= Charts ============================= */
+
+.charts-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 960px) {
+  .charts-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.chart-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chart-title {
+  margin: 0;
+  font-size: 1rem;
+  font-family: "Zen Old Mincho", serif;
+}
+
+.chart-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.chart-note {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.trend-head {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.trend-head .is-plus { color: var(--go); }
+.trend-head .is-minus { color: var(--avoid); }
+
+.trend-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(8, 10, 16, 0.4);
+}
+
+.trend-axis {
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+}
+
+.trend-line {
+  stroke: var(--gold);
+  stroke-width: 1.6;
+  filter: drop-shadow(0 0 2px rgba(221, 187, 114, 0.35));
+}
+
+.trend-bar-plus { fill: rgba(143, 210, 109, 0.75); }
+.trend-bar-minus { fill: rgba(222, 106, 99, 0.75); }
+
+.heatmap {
+  display: grid;
+  gap: 3px;
+  min-width: max-content;
+  font-size: 0.74rem;
+}
+
+.heatmap-col-head,
+.heatmap-row-head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 4px 6px;
+}
+
+.heatmap-cell {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+  color: var(--text);
+}
+
+.heatmap-cell.is-empty {
+  background: rgba(255, 255, 255, 0.02);
+  color: transparent;
+}
+
+.heatmap-cell-value {
+  font-weight: 700;
+}
+
+/* ============================= Score Breakdown ============================= */
+
+.score-breakdown {
+  margin-top: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.score-breakdown h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-family: "Zen Old Mincho", serif;
+  color: var(--muted);
+}
+
+.breakdown-bar {
+  display: flex;
+  width: 100%;
+  height: 32px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 10, 16, 0.4);
+}
+
+.breakdown-seg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  padding: 0 4px;
+  border-right: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.breakdown-seg:last-child {
+  border-right: 0;
+}
+
+.breakdown-seg.seg-base { background: rgba(221, 187, 114, 0.45); color: #2a2215; }
+.breakdown-seg.seg-month { background: rgba(143, 210, 109, 0.45); color: #0f1f0e; }
+.breakdown-seg.seg-special { background: rgba(231, 185, 76, 0.45); color: #261d08; }
+.breakdown-seg.seg-play { background: rgba(123, 179, 228, 0.45); color: #0c1c2a; }
+.breakdown-seg.seg-weekday { background: rgba(206, 175, 255, 0.45); color: #221833; }
+.breakdown-seg.is-minus { filter: saturate(0.7) brightness(0.82); }
+
+.breakdown-label {
+  font-weight: 700;
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+}
+
+.breakdown-value {
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ============================= Same Kanshi ============================= */
 
 .same-kanshi {

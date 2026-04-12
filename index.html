@@ -145,6 +145,28 @@
           </form>
         </section>
 
+        <details class="panel panel-charts collapsible-panel" id="chartsPanel">
+          <summary class="collapsible-summary">
+            <div>
+              <p class="panel-kicker">Charts</p>
+              <h2>統計ビュー</h2>
+              <span class="panel-note">収支推移 / 干支×曜日ヒートマップ。タップで展開</span>
+            </div>
+            <span class="collapsible-arrow" aria-hidden="true"></span>
+          </summary>
+          <div class="charts-grid">
+            <section class="chart-block">
+              <h3 class="chart-title">収支推移 (直近30日)</h3>
+              <div id="profitTrendChart" class="chart-wrap"></div>
+            </section>
+            <section class="chart-block">
+              <h3 class="chart-title">干支×曜日ヒートマップ</h3>
+              <div id="kanshiHeatmap" class="chart-wrap"></div>
+              <p class="chart-note">縦=曜日 / 横=直近に記録された干支。色は平均収支 (緑=プラス, 赤=マイナス)。</p>
+            </section>
+          </div>
+        </details>
+
         <details class="panel panel-log collapsible-panel" id="recentEntriesPanel">
           <summary class="collapsible-summary">
             <div>
