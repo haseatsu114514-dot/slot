@@ -718,10 +718,8 @@ function renderCalendar(months) {
             >
               <div class="day-card-top">
                 <span class="day-score-badge">${formatCompactScore(day.record.score)}</span>
-                <div class="day-top-right">
-                  ${day.specialDateContext.statuses.length ? `<span class="day-marker is-caution">!</span>` : ""}
-                  <span class="day-number">${day.day}</span>
-                </div>
+                <span class="day-number">${day.day}</span>
+                ${day.specialDateContext.statuses.length ? `<span class="day-marker is-caution">!</span>` : `<span class="day-marker-placeholder" aria-hidden="true"></span>`}
               </div>
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
