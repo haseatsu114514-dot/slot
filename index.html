@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260415a">
+    <link rel="stylesheet" href="./styles.css?v=20260416a">
   </head>
   <body>
     <div class="page-shell">
@@ -75,13 +75,22 @@
                 <p class="panel-kicker">Calendar</p>
                 <h2>3か月カレンダー</h2>
               </div>
-              <div class="legend">
-                <span class="legend-item is-perfect">★</span>
-                <span class="legend-item is-special">◎</span>
-                <span class="legend-item is-go">○</span>
-                <span class="legend-item is-hold">△</span>
-                <span class="legend-item is-avoid">×</span>
+              <div class="legend" role="list" aria-label="評価凡例">
+                <span class="legend-item is-perfect" role="listitem" title="★ 完璧: スコア 9 以上 / 最優先で打つべき日">★</span>
+                <span class="legend-item is-special" role="listitem" title="◎ 絶好: スコア 7〜8 / 積極的に狙う">◎</span>
+                <span class="legend-item is-go" role="listitem" title="○ 行く: スコア 5〜6 / 打つのを推奨">○</span>
+                <span class="legend-item is-hold" role="listitem" title="△ どちらでも: スコア 3〜4 / 体調と相談">△</span>
+                <span class="legend-item is-avoid" role="listitem" title="× 見送り: スコア 2 以下 / 打たない方が得">×</span>
               </div>
+            </div>
+            <div class="calendar-toolbar">
+              <div class="calendar-filter" role="group" aria-label="カレンダー絞り込み">
+                <button type="button" class="filter-chip is-active" data-filter="all">全て</button>
+                <button type="button" class="filter-chip" data-filter="go">○以上</button>
+                <button type="button" class="filter-chip" data-filter="top">★◎のみ</button>
+                <button type="button" class="filter-chip" data-filter="recorded">実績あり</button>
+              </div>
+              <button id="jumpTodayButton" class="today-jump-button" type="button">今日へ移動</button>
             </div>
             <div id="calendarGrid" class="calendar-grid"></div>
             <div id="dayHoverCard" class="day-hover-card" hidden></div>
@@ -186,6 +195,6 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260415a"></script>
+    <script type="module" src="./app.js?v=20260416a"></script>
   </body>
 </html>
