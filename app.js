@@ -708,6 +708,9 @@ function renderCalendar(months) {
           // Day 1 is explicitly placed at its weekday column (1-indexed grid column).
           // All subsequent days flow in order.
           const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
+          const markerHtml = day.specialDateContext.statuses.length
+            ? `<span class="day-marker-corner is-caution" aria-hidden="true">!</span>`
+            : "";
           return `
             <button
               class="day-card tier-${day.rating.tier} ${selectedClass}"
@@ -716,14 +719,12 @@ function renderCalendar(months) {
               aria-label="${scoreSummary}"
               title="${scoreSummary}"${columnStart}
             >
-              <div class="day-card-top">
-                <span class="day-score-badge">${formatCompactScore(day.record.score)}</span>
-                <span class="day-number">${day.day}</span>
-                ${day.specialDateContext.statuses.length ? `<span class="day-marker is-caution">!</span>` : `<span class="day-marker-placeholder" aria-hidden="true"></span>`}
-              </div>
+              ${markerHtml}
+              <span class="day-number">${day.day}</span>
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
+              <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
               ${day.opportunity.active ? `<span class="day-opportunity ${getToneClass(day.opportunity.tone)}">${day.opportunity.label}</span>` : ""}
             </button>
