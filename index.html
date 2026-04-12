@@ -47,6 +47,7 @@
               </div>
             </div>
             <div id="summaryCards" class="summary-cards"></div>
+            <div id="performancePanel" class="performance-panel"></div>
           </article>
 
           <article class="panel panel-upcoming">
@@ -143,6 +144,18 @@
             </p>
           </form>
         </section>
+
+        <details class="panel panel-log collapsible-panel" id="recentEntriesPanel">
+          <summary class="collapsible-summary">
+            <div>
+              <p class="panel-kicker">Log</p>
+              <h2>過去の記録</h2>
+              <span class="panel-note">直近の実績入力を編集・削除できます。タップで展開</span>
+            </div>
+            <span class="collapsible-arrow" aria-hidden="true"></span>
+          </summary>
+          <div id="recentEntries" class="recent-entries-list"></div>
+        </details>
 
         <details class="panel panel-aggregates collapsible-panel">
           <summary class="collapsible-summary">

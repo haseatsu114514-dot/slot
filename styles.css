@@ -297,6 +297,122 @@ a {
   }
 }
 
+.performance-panel {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+  margin-top: 12px;
+}
+
+@media (min-width: 720px) {
+  .performance-panel {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .performance-goal {
+    grid-column: 1 / -1;
+  }
+}
+
+.performance-card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.performance-card.is-plus {
+  background: rgba(143, 210, 109, 0.10);
+  border-color: rgba(143, 210, 109, 0.35);
+}
+
+.performance-card.is-minus {
+  background: rgba(222, 106, 99, 0.10);
+  border-color: rgba(222, 106, 99, 0.35);
+}
+
+.performance-label {
+  font-size: 0.74rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.performance-value {
+  font-size: 1.35rem;
+  font-weight: 900;
+  font-family: "Zen Old Mincho", serif;
+}
+
+.performance-note {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.performance-goal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.performance-goal-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  margin: 4px 0 2px;
+}
+
+.performance-goal-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(221, 187, 114, 0.9), rgba(143, 210, 109, 0.9));
+  transition: width 0.28s ease;
+}
+
+.performance-goal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.performance-goal-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.performance-goal-form input {
+  width: 112px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(8, 10, 16, 0.6);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.performance-goal-submit {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(221, 187, 114, 0.5);
+  background: rgba(221, 187, 114, 0.18);
+  color: var(--gold-soft);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.performance-goal-submit:hover {
+  background: rgba(221, 187, 114, 0.3);
+}
+
+.performance-value.is-plus { color: var(--go); }
+.performance-value.is-minus { color: var(--avoid); }
+
 /* ============================= Upcoming ============================= */
 
 .upcoming-list {
@@ -1691,4 +1807,183 @@ details[open] .collapsible-arrow {
 }
 .mobile-sticky-confidence.is-neutral {
   color: var(--muted);
+}
+
+/* ============================= Recent Entries ============================= */
+
+.recent-entries-list {
+  display: grid;
+  gap: 10px;
+}
+
+.recent-entry {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 6px;
+}
+
+.recent-entry-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.recent-entry-date {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-entry-profit {
+  margin-left: auto;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-entry-profit.is-plus { color: var(--go); }
+.recent-entry-profit.is-minus { color: var(--avoid); }
+
+.recent-entry-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.recent-entry-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+  opacity: 0.82;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.recent-entry-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.recent-entry-edit,
+.recent-entry-delete {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.recent-entry-edit:hover {
+  background: rgba(221, 187, 114, 0.18);
+  border-color: rgba(221, 187, 114, 0.45);
+  color: var(--gold-soft);
+}
+
+.recent-entry-delete:hover {
+  background: rgba(222, 106, 99, 0.18);
+  border-color: rgba(222, 106, 99, 0.45);
+  color: #f8b5b0;
+}
+
+.recent-entry-badge-remote {
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.06em;
+}
+
+/* ============================= Same Kanshi ============================= */
+
+.same-kanshi {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 8px;
+}
+
+.same-kanshi h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: "Zen Old Mincho", serif;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.same-kanshi h4 small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 400;
+  font-family: "Zen Kaku Gothic New", sans-serif;
+}
+
+.same-kanshi-summary {
+  display: flex;
+  gap: 14px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.same-kanshi-summary .is-plus { color: var(--go); }
+.same-kanshi-summary .is-minus { color: var(--avoid); }
+
+.same-kanshi-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.same-kanshi-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+}
+
+.same-kanshi-item:first-child {
+  border-top: 0;
+}
+
+.same-kanshi-date {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.same-kanshi-profit {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.same-kanshi-profit.is-plus { color: var(--go); }
+.same-kanshi-profit.is-minus { color: var(--avoid); }
+
+.same-kanshi-memo {
+  color: var(--muted);
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
