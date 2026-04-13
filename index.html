@@ -185,7 +185,19 @@
             <span class="collapsible-arrow" aria-hidden="true"></span>
           </summary>
           <div class="log-toolbar">
+            <label class="log-tool-select">
+              <span>範囲</span>
+              <select id="exportScopeSelect" aria-label="エクスポート範囲">
+                <option value="all">全て</option>
+                <option value="month">今月のみ</option>
+                <option value="last30">直近30日</option>
+                <option value="year">今年のみ</option>
+                <option value="wins">勝ち (+) のみ</option>
+                <option value="losses">負け (-) のみ</option>
+              </select>
+            </label>
             <button id="exportJsonButton" type="button" class="log-tool-button">JSONエクスポート</button>
+            <button id="exportCsvButton" type="button" class="log-tool-button">CSVエクスポート</button>
             <label class="log-tool-button log-tool-button-label">
               <span>JSONインポート</span>
               <input id="importJsonInput" type="file" accept="application/json,.json" hidden>
