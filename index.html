@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css?v=20260416a">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <meta name="theme-color" content="#0f1014">
   </head>
   <body>
     <div class="page-shell">
@@ -31,6 +33,7 @@
             <strong id="syncBadgeText">同期未設定</strong>
           </div>
           <button id="syncNowButton" class="hero-sync-button" type="button">シート最新反映</button>
+          <button id="themeToggleButton" class="hero-theme-button" type="button" aria-label="テーマ切替" title="テーマ切替">🌓</button>
         </div>
       </header>
 
@@ -176,6 +179,14 @@
             </div>
             <span class="collapsible-arrow" aria-hidden="true"></span>
           </summary>
+          <div class="log-toolbar">
+            <button id="exportJsonButton" type="button" class="log-tool-button">JSONエクスポート</button>
+            <label class="log-tool-button log-tool-button-label">
+              <span>JSONインポート</span>
+              <input id="importJsonInput" type="file" accept="application/json,.json" hidden>
+            </label>
+            <span id="logToolStatus" class="log-tool-status" role="status"></span>
+          </div>
           <div id="recentEntries" class="recent-entries-list"></div>
         </details>
 
