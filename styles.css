@@ -2295,6 +2295,40 @@ html[data-theme="light"] .month-accordion-summary {
   letter-spacing: 0.06em;
 }
 
+.recent-entry-origin {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+}
+
+.recent-entry-origin.is-sheets {
+  border-color: rgba(143, 210, 109, 0.4);
+  color: var(--go);
+  background: rgba(143, 210, 109, 0.08);
+}
+
+.recent-entry-origin.is-local {
+  border-color: rgba(123, 179, 228, 0.4);
+  color: #9fc7eb;
+  background: rgba(123, 179, 228, 0.08);
+}
+
+.recent-entry-origin.is-pending {
+  border-color: rgba(231, 185, 76, 0.5);
+  color: var(--hold);
+  background: rgba(231, 185, 76, 0.12);
+  animation: pending-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pending-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 /* ============================= Charts ============================= */
 
 .charts-grid {
