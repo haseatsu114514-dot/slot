@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260412h">
+    <link rel="stylesheet" href="./styles.css?v=20260412i">
     <link rel="manifest" href="./manifest.webmanifest">
     <meta name="theme-color" content="#0f1014">
   </head>
@@ -39,7 +39,7 @@
 
       <main class="page-content">
         <!-- モバイル専用: カレンダーを見ながら選択日の概要を常に見られるスティッキーバー -->
-        <div id="mobileStickyDetail" class="mobile-sticky-detail" hidden></div>
+        <div id="mobileStickyDetail" class="mobile-sticky-detail" role="status" aria-live="polite" hidden></div>
 
         <section class="overview-grid">
           <article class="panel panel-stat">
@@ -96,7 +96,7 @@
               </div>
               <button id="jumpTodayButton" class="today-jump-button" type="button">今日へ移動</button>
             </div>
-            <div id="calendarGrid" class="calendar-grid"></div>
+            <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="3か月カレンダー"></div>
             <div id="dayHoverCard" class="day-hover-card" hidden></div>
           </article>
 
@@ -142,7 +142,7 @@
               <button id="retrySyncButton" class="secondary-button" type="button">Sheets同期を再試行</button>
             </div>
 
-            <p id="formStatus" class="form-status">
+            <p id="formStatus" class="form-status" role="status" aria-live="polite">
               Google Sheets の Web アプリ URL を設定すると、保存時にシートへ追記され、再読み込みや自動同期でも反映されます。
             </p>
           </form>
@@ -241,6 +241,6 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260412h"></script>
+    <script type="module" src="./app.js?v=20260412i"></script>
   </body>
 </html>

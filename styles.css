@@ -115,6 +115,36 @@ a {
     linear-gradient(135deg, rgba(43, 35, 25, 0.95), rgba(18, 20, 28, 0.98)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
   box-shadow: var(--shadow);
+  transition: padding 0.2s ease, border-radius 0.2s ease;
+}
+
+.hero.is-compact {
+  padding: 10px 16px;
+}
+
+.hero.is-compact h1 {
+  font-size: clamp(1.1rem, 3.8vw, 1.8rem);
+  margin-top: 2px;
+}
+
+.hero.is-compact .eyebrow,
+.hero.is-compact .hero-chip-label {
+  display: none;
+}
+
+.hero.is-compact .hero-meta {
+  margin-top: 8px;
+}
+
+.hero.is-compact .hero-chip {
+  padding: 4px 9px;
+  font-size: 0.76rem;
+}
+
+@media (min-width: 720px) {
+  .hero.is-compact {
+    padding: 14px 20px;
+  }
 }
 
 @media (min-width: 720px) {
@@ -969,6 +999,20 @@ details[open] .collapsible-arrow {
   align-items: flex-start;
   padding: 14px 16px;
   cursor: pointer;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: linear-gradient(180deg, rgba(17, 19, 26, 0.96), rgba(17, 19, 26, 0.82));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+html[data-theme="sepia"] .month-accordion-summary {
+  background: linear-gradient(180deg, rgba(239, 225, 192, 0.96), rgba(239, 225, 192, 0.82));
+}
+
+html[data-theme="light"] .month-accordion-summary {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.82));
 }
 
 .month-accordion-summary::-webkit-details-marker {
