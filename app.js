@@ -28,6 +28,8 @@ const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
 const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
 const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
+const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
+const THEMES = ["dark", "sepia", "light"];
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
 
 const state = {
@@ -72,10 +74,15 @@ const refs = {
   calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]")),
   performancePanel: document.getElementById("performancePanel"),
   profitTrendChart: document.getElementById("profitTrendChart"),
-  kanshiHeatmap: document.getElementById("kanshiHeatmap")
+  kanshiHeatmap: document.getElementById("kanshiHeatmap"),
+  themeToggleButton: document.getElementById("themeToggleButton"),
+  exportJsonButton: document.getElementById("exportJsonButton"),
+  importJsonInput: document.getElementById("importJsonInput"),
+  logToolStatus: document.getElementById("logToolStatus")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  applyTheme(loadTheme());
   refs.playDateInput.value = state.selectedDateKey;
   setFormStatus(
     CONFIG.syncEndpoint
@@ -88,7 +95,47 @@ document.addEventListener("DOMContentLoaded", () => {
   wireEvents();
   hydrateRemoteDashboard();
   startAutoSync();
+  registerServiceWorker();
 });
+
+function loadTheme() {
+  try {
+    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (raw && THEMES.includes(raw)) return raw;
+  } catch (error) { /* ignore */ }
+  return "dark";
+}
+
+function applyTheme(theme) {
+  const next = THEMES.includes(theme) ? theme : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, next);
+  } catch (error) { /* ignore */ }
+  if (refs.themeToggleButton) {
+    const icons = { dark: "🌙", sepia: "📜", light: "☀" };
+    refs.themeToggleButton.textContent = icons[next] || "🌓";
+    refs.themeToggleButton.dataset.theme = next;
+  }
+}
+
+function cycleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") || "dark";
+  const idx = THEMES.indexOf(current);
+  const next = THEMES[(idx + 1) % THEMES.length];
+  applyTheme(next);
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  // Only register when served over http(s); skip file://.
+  if (!/^https?:$/.test(window.location.protocol)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {
+      /* ignore registration errors; app still works without SW */
+    });
+  });
+}
 
 function selectDate(dateKey) {
   if (!dateKey) return;
@@ -226,6 +273,102 @@ function wireEvents() {
   });
 
   refs.recentEntries?.addEventListener("click", handleRecentEntryClick);
+
+  refs.themeToggleButton?.addEventListener("click", () => {
+    cycleTheme();
+  });
+
+  refs.exportJsonButton?.addEventListener("click", () => {
+    exportEntriesToJson();
+  });
+
+  refs.importJsonInput?.addEventListener("change", (event) => {
+    const input = event.target;
+    const file = input && input.files ? input.files[0] : null;
+    if (file) importEntriesFromJson(file);
+    if (input) input.value = "";
+  });
+}
+
+function setLogToolStatus(message, tone = "info") {
+  if (!refs.logToolStatus) return;
+  refs.logToolStatus.textContent = message;
+  refs.logToolStatus.dataset.tone = tone;
+}
+
+function exportEntriesToJson() {
+  try {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      version: 1,
+      entries: state.localEntries
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    link.href = url;
+    link.download = `slot-kanshi-entries-${stamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setLogToolStatus(`エクスポートしました (${state.localEntries.length}件)。`, "success");
+  } catch (error) {
+    setLogToolStatus("エクスポートに失敗しました。", "warn");
+  }
+}
+
+async function importEntriesFromJson(file) {
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const incoming = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.entries)
+        ? parsed.entries
+        : null;
+    if (!incoming) {
+      setLogToolStatus("JSON 形式が不正です。", "warn");
+      return;
+    }
+    const normalized = incoming
+      .filter((entry) => entry && entry.targetDate)
+      .map((entry) => {
+        const normalizedDate = normalizeTargetDate(entry.targetDate);
+        return {
+          id: entry.id || createEntryId(),
+          createdAt: entry.createdAt || new Date().toISOString(),
+          updatedAt: entry.updatedAt || entry.createdAt || new Date().toISOString(),
+          targetDate: normalizedDate,
+          kanshi: entry.kanshi || getKanshiForDateKey(normalizedDate, CONFIG),
+          profit: Number(entry.profit) || 0,
+          memo: String(entry.memo || "")
+        };
+      })
+      .filter((entry) => entry.targetDate);
+
+    if (!normalized.length) {
+      setLogToolStatus("取り込めるエントリがありませんでした。", "warn");
+      return;
+    }
+
+    // Merge: existing by id wins, incoming adds new rows; same-date duplicates are not aggressively deduped here.
+    const existingIds = new Set(state.localEntries.map((e) => e.id));
+    let added = 0;
+    for (const entry of normalized) {
+      if (existingIds.has(entry.id)) continue;
+      state.localEntries.unshift(entry);
+      existingIds.add(entry.id);
+      added += 1;
+    }
+    persistLocalEntries();
+    setLogToolStatus(`インポート完了: ${added}件追加 / スキップ ${normalized.length - added}件。`, "success");
+    render();
+  } catch (error) {
+    setLogToolStatus("インポートに失敗しました。JSONを確認してください。", "warn");
+  }
 }
 
 function syncCalendarFilterButtons() {
