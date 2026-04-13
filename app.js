@@ -82,7 +82,9 @@ const refs = {
   calendarJumpInput: document.getElementById("calendarJumpInput"),
   formFab: document.getElementById("formFab"),
   quickInputPopover: document.getElementById("quickInputPopover"),
-  exportReportButton: document.getElementById("exportReportButton")
+  exportReportButton: document.getElementById("exportReportButton"),
+  exportScopeSelect: document.getElementById("exportScopeSelect"),
+  exportCsvButton: document.getElementById("exportCsvButton")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -284,6 +286,10 @@ function wireEvents() {
 
   refs.exportJsonButton?.addEventListener("click", () => {
     exportEntriesToJson();
+  });
+
+  refs.exportCsvButton?.addEventListener("click", () => {
+    exportEntriesToCsv();
   });
 
   refs.importJsonInput?.addEventListener("change", (event) => {
@@ -730,12 +736,57 @@ function roundedRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/**
+ * Returns the subset of entries matched by the current export scope selector.
+ * Draws from both local and remote (deduped) entries so exports are the
+ * canonical view even when Sheets is the source of truth.
+ * @returns {{scope: string, entries: Array<object>}}
+ */
+function getScopedExportEntries() {
+  const scope = refs.exportScopeSelect?.value || "all";
+  const { entries } = getDedupedAggregateEntries();
+  const today = new Date();
+  const todayKey = getTodayDateKey();
+  const monthPrefix = todayKey.slice(0, 7);
+  const yearPrefix = todayKey.slice(0, 4);
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000);
+  const thirtyAgoKey = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth() + 1).padStart(2, "0")}-${String(thirtyDaysAgo.getDate()).padStart(2, "0")}`;
+
+  const filtered = entries.filter((entry) => {
+    const date = normalizeTargetDate(entry.targetDate);
+    if (!date) return false;
+    const profit = Number(entry.profit);
+    if (!Number.isFinite(profit)) return false;
+    if (scope === "month") return date.startsWith(monthPrefix);
+    if (scope === "year") return date.startsWith(yearPrefix);
+    if (scope === "last30") return date >= thirtyAgoKey && date <= todayKey;
+    if (scope === "wins") return profit > 0;
+    if (scope === "losses") return profit < 0;
+    return true;
+  });
+  return { scope, entries: filtered };
+}
+
+/** @returns {string} human label for the active export scope */
+function getScopeLabel(scope) {
+  return {
+    all: "全件",
+    month: "今月",
+    year: "今年",
+    last30: "直近30日",
+    wins: "勝ち",
+    losses: "負け"
+  }[scope] || "全件";
+}
+
 function exportEntriesToJson() {
   try {
+    const { scope, entries } = getScopedExportEntries();
     const payload = {
       exportedAt: new Date().toISOString(),
       version: 1,
-      entries: state.localEntries
+      scope,
+      entries
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -743,14 +794,50 @@ function exportEntriesToJson() {
     const now = new Date();
     const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
     link.href = url;
-    link.download = `slot-kanshi-entries-${stamp}.json`;
+    link.download = `slot-kanshi-${scope}-${stamp}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    setLogToolStatus(`エクスポートしました (${state.localEntries.length}件)。`, "success");
+    setLogToolStatus(`${getScopeLabel(scope)}でエクスポート (${entries.length}件)。`, "success");
   } catch (error) {
     setLogToolStatus("エクスポートに失敗しました。", "warn");
+  }
+}
+
+function exportEntriesToCsv() {
+  try {
+    const { scope, entries } = getScopedExportEntries();
+    const header = ["date", "kanshi", "profit", "memo"];
+    const rows = entries
+      .sort((a, b) => (a.targetDate < b.targetDate ? -1 : 1))
+      .map((entry) => [
+        normalizeTargetDate(entry.targetDate),
+        entry.kanshi || "",
+        String(Number(entry.profit) || 0),
+        String(entry.memo || "").replace(/[\r\n]+/g, " ")
+      ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => {
+        const text = String(cell);
+        return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      }).join(","))
+      .join("\n");
+    // Prepend BOM so Excel correctly recognizes UTF-8 (Japanese memos otherwise break).
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    link.href = url;
+    link.download = `slot-kanshi-${scope}-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setLogToolStatus(`${getScopeLabel(scope)}でCSV出力 (${entries.length}件)。`, "success");
+  } catch (error) {
+    setLogToolStatus("CSV出力に失敗しました。", "warn");
   }
 }
 
@@ -875,6 +962,10 @@ function computeMonthlyProgress() {
   return { total, days, wins, monthPrefix: prefix };
 }
 
+/**
+ * Computes the current win/lose/even streak from recorded entries (most recent first).
+ * @returns {{kind: ("none"|"even"|"win"|"lose"), count: number}}
+ */
 function computeStreak() {
   const { entries } = getDedupedAggregateEntries();
   const sorted = entries
@@ -913,6 +1004,12 @@ function persistCalendarFilter() {
   }
 }
 
+/**
+ * Tests a calendar day against the active filter chip.
+ * @param {{dateKey: string, record: {score: number}}} day
+ * @param {Set<string>} [recordedDates] - dates that have any recorded profit entry
+ * @returns {boolean}
+ */
 function matchesCalendarFilter(day, recordedDates) {
   if (state.calendarFilter === "all") return true;
   if (state.calendarFilter === "go") return day.record.score >= RATING_THRESHOLDS.goMin;
@@ -991,6 +1088,7 @@ function getInitialSelectedDateKey(config) {
   return config.anchorDate;
 }
 
+/** @returns {string} Today's date as `YYYY-MM-DD`. */
 function getTodayDateKey() {
   const now = new Date();
   const year = now.getFullYear();
@@ -999,6 +1097,12 @@ function getTodayDateKey() {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Returns a date `daysAhead` days after today as `YYYY-MM-DD`.
+ * Sets local noon to avoid DST/edge-case rollovers.
+ * @param {number} daysAhead
+ * @returns {string}
+ */
 function getFutureDateKey(daysAhead) {
   const next = new Date();
   next.setHours(12, 0, 0, 0);
@@ -1009,6 +1113,11 @@ function getFutureDateKey(daysAhead) {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Picks days in [today, today+14] whose score reaches the "go" threshold.
+ * Used by the 直近の狙い目 panel.
+ * @param {Array<{dayRows: Array<{dateKey: string, record: {score: number}}>}>} months
+ */
 function getUpcomingDays(months) {
   const todayKey = getTodayDateKey();
   const endKey = getFutureDateKey(14);
@@ -1018,6 +1127,11 @@ function getUpcomingDays(months) {
     .sort((left, right) => left.dateKey.localeCompare(right.dateKey));
 }
 
+/**
+ * Bucket counts for the 90-day summary cards.
+ * @param {Array<{dayRows: Array<{record: object}>}>} months
+ * @returns {{total:number, perfect:number, special:number, go:number, hold:number, avoid:number}}
+ */
 function getSummary(months) {
   const allDays = months.flatMap((month) => month.dayRows);
   return {
@@ -1144,6 +1258,13 @@ function renderMobileStickyDetail(records) {
   }
 }
 
+/**
+ * Normalises any sane date input (Date, ISO `YYYY-MM-DD`, slashed `YYYY/MM/DD`)
+ * to canonical `YYYY-MM-DD`. Returns "" for falsy / unrecognised input so
+ * callers can short-circuit without a try/catch.
+ * @param {string | Date | null | undefined} value
+ * @returns {string}
+ */
 function normalizeTargetDate(value) {
   if (!value) return "";
   if (value instanceof Date) {
