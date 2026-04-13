@@ -1031,10 +1031,12 @@ function getSummary(months) {
 }
 
 function getSyncLabel() {
-  if (state.sync.mode === "online") return "Google Sheets 同期中";
-  if (state.sync.mode === "loading") return "Sheets 接続中";
-  if (state.sync.mode === "error") return "同期失敗";
-  return "同期未設定";
+  const pendingCount = state.localEntries.filter((e) => e.pendingSync).length;
+  const pendingSuffix = pendingCount > 0 ? ` / 保留${pendingCount}件` : "";
+  if (state.sync.mode === "online") return `Google Sheets 同期中${pendingSuffix}`;
+  if (state.sync.mode === "loading") return `Sheets 接続中${pendingSuffix}`;
+  if (state.sync.mode === "error") return `同期失敗${pendingSuffix}`;
+  return `同期未設定${pendingSuffix}`;
 }
 
 function render() {
@@ -1720,14 +1722,21 @@ function renderRecentEntries() {
       const rating = info.rating;
       const isLocal = localIdSet.has(entry.id);
       const idAttr = entry.id ? entry.id : "";
+      const pending = isLocal && entry.pendingSync === true;
+      const originBadge = pending
+        ? `<span class="recent-entry-origin is-pending" title="Sheetsへ未送信">Pending</span>`
+        : isLocal
+          ? `<span class="recent-entry-origin is-local" title="端末内のみ">Local</span>`
+          : `<span class="recent-entry-origin is-sheets" title="Sheets由来">Sheets</span>`;
       const actions = isLocal
         ? `
           <div class="recent-entry-actions">
+            ${originBadge}
             <button type="button" class="recent-entry-edit" data-action="edit-entry" data-entry-id="${idAttr}">編集</button>
             <button type="button" class="recent-entry-delete" data-action="delete-entry" data-entry-id="${idAttr}">削除</button>
           </div>
         `
-        : `<div class="recent-entry-actions"><span class="recent-entry-badge-remote">Sheets</span></div>`;
+        : `<div class="recent-entry-actions">${originBadge}</div>`;
       return `
         <article class="recent-entry">
           <div class="recent-entry-main">
@@ -2256,17 +2265,25 @@ function startAutoSync() {
   if (!CONFIG.syncEndpoint) return;
 
   window.setInterval(() => {
-    hydrateRemoteDashboard();
+    hydrateRemoteDashboard().then(() => drainPendingSyncQueue());
   }, CONFIG.syncIntervalMs);
 
   window.addEventListener("focus", () => {
-    hydrateRemoteDashboard();
+    hydrateRemoteDashboard().then(() => drainPendingSyncQueue());
   });
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      hydrateRemoteDashboard();
+      hydrateRemoteDashboard().then(() => drainPendingSyncQueue());
     }
+  });
+
+  window.addEventListener("online", () => {
+    setFormStatus("オンラインに復帰しました。保留中の記録を送信しています。", "info");
+    drainPendingSyncQueue();
+  });
+  window.addEventListener("offline", () => {
+    setFormStatus("オフラインです。保存は端末内に保留されます。", "warn");
   });
 }
 
@@ -2295,7 +2312,10 @@ async function saveResult() {
     targetDate,
     kanshi: getKanshiForDateKey(targetDate, CONFIG),
     profit,
-    memo: String(formData.get("memo") || "").trim()
+    memo: String(formData.get("memo") || "").trim(),
+    // Starts pending. postEntryToSheets marks it synced, or it stays pending
+    // so the offline queue can retry it later when connectivity returns.
+    pendingSync: CONFIG.syncEndpoint ? true : false
   };
 
   refs.saveButton.disabled = true;
@@ -2311,6 +2331,8 @@ async function saveResult() {
         updateFormPreview();
         setFormStatus("Google Sheets に保存し、カレンダーにも反映しました。", "success");
         state.editingEntryId = null;
+        // Any previously-queued entries can now be drained.
+        drainPendingSyncQueue();
         render();
         return;
       }
@@ -2380,6 +2402,42 @@ async function postEntryToSheets(entry) {
     message: "Google Sheets と同期しています。"
   };
   return true;
+}
+
+// Retries any localEntries marked pendingSync. Entries that successfully
+// appear in remoteEntries (by id or by date+profit) are removed from the
+// local list to avoid duplicates. Safe to call repeatedly.
+async function drainPendingSyncQueue() {
+  if (!CONFIG.syncEndpoint) return;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+  const pending = state.localEntries.filter((e) => e.pendingSync);
+  if (!pending.length) return;
+  let changed = false;
+  for (const entry of pending) {
+    try {
+      await postEntryToSheets(entry);
+      entry.pendingSync = false;
+      changed = true;
+      // If the server echoed the same entry (by id or matching date), drop
+      // the local copy so we don't double-count.
+      const matched = state.remoteEntries.some((r) => {
+        if (r?.id && entry.id && r.id === entry.id) return true;
+        const sameDate = normalizeTargetDate(r?.targetDate) === normalizeTargetDate(entry.targetDate);
+        const sameProfit = Number(r?.profit) === Number(entry.profit);
+        return sameDate && sameProfit;
+      });
+      if (matched) {
+        state.localEntries = state.localEntries.filter((e) => e.id !== entry.id);
+      }
+    } catch (error) {
+      // Leave it pending for the next retry; stop so we don't hammer the endpoint.
+      break;
+    }
+  }
+  if (changed) {
+    persistLocalEntries();
+    render();
+  }
 }
 
 function setFormStatus(message, tone = "info") {
