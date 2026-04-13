@@ -288,6 +288,65 @@ function wireEvents() {
     if (file) importEntriesFromJson(file);
     if (input) input.value = "";
   });
+
+  // Compress the hero once the user scrolls past a small threshold so more
+  // calendar is visible. Uses rAF throttling to keep scroll cheap.
+  const hero = document.querySelector(".hero");
+  if (hero) {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const scrolled = window.scrollY > 120;
+      hero.classList.toggle("is-compact", scrolled);
+    };
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (raf) return;
+        raf = window.requestAnimationFrame(update);
+      },
+      { passive: true }
+    );
+    update();
+  }
+
+  // Keyboard navigation on the calendar: arrow keys move day selection by 1/7,
+  // Home/End jump to start/end of the current visible month.
+  refs.calendarGrid.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    const focused = event.target.closest("[data-date-key]");
+    if (!focused) return;
+    event.preventDefault();
+    const currentKey = focused.dataset.dateKey;
+    const delta = event.key === "ArrowLeft" ? -1
+      : event.key === "ArrowRight" ? 1
+      : event.key === "ArrowUp" ? -7
+      : event.key === "ArrowDown" ? 7
+      : 0;
+    let nextKey = currentKey;
+    if (delta !== 0) {
+      const base = new Date(`${currentKey}T12:00:00Z`);
+      base.setUTCDate(base.getUTCDate() + delta);
+      const y = base.getUTCFullYear();
+      const m = String(base.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(base.getUTCDate()).padStart(2, "0");
+      nextKey = `${y}-${m}-${d}`;
+    } else if (event.key === "Home" || event.key === "End") {
+      const [y, m] = currentKey.split("-").map(Number);
+      const day = event.key === "Home" ? 1 : getDaysInMonth(y, m);
+      nextKey = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+    const target = refs.calendarGrid.querySelector(`[data-date-key="${nextKey}"]`);
+    if (!target) return;
+    const monthAcc = target.closest("details.month-accordion");
+    if (monthAcc && !monthAcc.open) monthAcc.open = true;
+    selectDate(nextKey);
+    // Focus after render to keep arrow-chain navigation responsive.
+    window.requestAnimationFrame(() => {
+      const refreshed = refs.calendarGrid.querySelector(`[data-date-key="${nextKey}"]`);
+      if (refreshed) refreshed.focus();
+    });
+  });
 }
 
 function setLogToolStatus(message, tone = "info") {
