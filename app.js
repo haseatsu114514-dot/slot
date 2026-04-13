@@ -78,7 +78,10 @@ const refs = {
   themeToggleButton: document.getElementById("themeToggleButton"),
   exportJsonButton: document.getElementById("exportJsonButton"),
   importJsonInput: document.getElementById("importJsonInput"),
-  logToolStatus: document.getElementById("logToolStatus")
+  logToolStatus: document.getElementById("logToolStatus"),
+  calendarJumpInput: document.getElementById("calendarJumpInput"),
+  formFab: document.getElementById("formFab"),
+  quickInputPopover: document.getElementById("quickInputPopover")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -310,6 +313,41 @@ function wireEvents() {
     update();
   }
 
+  refs.calendarJumpInput?.addEventListener("change", (event) => {
+    const value = event.target.value;
+    if (!value) return;
+    const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
+    if (months.length) {
+      const first = months[0];
+      const last = months[months.length - 1];
+      const firstKey = `${first.year}-${String(first.month).padStart(2, "0")}-01`;
+      const lastKey = `${last.year}-${String(last.month).padStart(2, "0")}-${String(getDaysInMonth(last.year, last.month)).padStart(2, "0")}`;
+      if (value < firstKey || value > lastKey) {
+        setFormStatus(`${value} は表示期間外です (${firstKey}〜${lastKey})。`, "warn");
+        return;
+      }
+    }
+    selectDate(value);
+    window.requestAnimationFrame(() => {
+      const target = refs.calendarGrid.querySelector(`[data-date-key="${value}"]`);
+      if (!target) return;
+      const monthAcc = target.closest("details.month-accordion");
+      if (monthAcc && !monthAcc.open) monthAcc.open = true;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
+
+  refs.formFab?.addEventListener("click", () => {
+    if (refs.resultForm && refs.resultForm.scrollIntoView) {
+      refs.resultForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    window.requestAnimationFrame(() => {
+      refs.profitInput?.focus({ preventScroll: true });
+    });
+  });
+
+  wireQuickInputPopover();
+
   // Keyboard navigation on the calendar: arrow keys move day selection by 1/7,
   // Home/End jump to start/end of the current visible month.
   refs.calendarGrid.addEventListener("keydown", (event) => {
@@ -347,6 +385,149 @@ function wireEvents() {
       if (refreshed) refreshed.focus();
     });
   });
+}
+
+function wireQuickInputPopover() {
+  const popover = refs.quickInputPopover;
+  if (!popover) return;
+  const form = popover.querySelector(".quick-input-form");
+  const profitInput = form?.querySelector("[name='profit']");
+  const memoInput = form?.querySelector("[name='memo']");
+  const closeBtn = popover.querySelector(".quick-input-close");
+  const dateLabel = popover.querySelector(".quick-input-date");
+  const kanshiLabel = popover.querySelector(".quick-input-kanshi");
+
+  let pressTimer = 0;
+  let pressedKey = null;
+  let lastTouchPos = { x: 0, y: 0 };
+
+  const openPopover = (dateKey, anchor) => {
+    if (!dateKey) return;
+    try {
+      const records = getComputedRecords();
+      const day = buildDayInfo(dateKey, records, getActiveConfig());
+      if (dateLabel) dateLabel.textContent = `${day.year}/${day.month}/${day.day}(${WEEKDAYS[day.weekday]})`;
+      if (kanshiLabel) kanshiLabel.textContent = day.kanshi;
+    } catch (error) {
+      if (dateLabel) dateLabel.textContent = dateKey;
+      if (kanshiLabel) kanshiLabel.textContent = "";
+    }
+    // Prefill with existing local entry for that date if any.
+    const existing = state.localEntries.find((e) => normalizeTargetDate(e.targetDate) === dateKey);
+    if (profitInput) profitInput.value = existing ? existing.profit : "";
+    if (memoInput) memoInput.value = existing ? (existing.memo || "") : "";
+    popover.dataset.dateKey = dateKey;
+    popover.dataset.editId = existing?.id || "";
+    popover.hidden = false;
+    positionQuickPopover(popover, anchor);
+    window.requestAnimationFrame(() => profitInput?.focus({ preventScroll: true }));
+  };
+
+  const closePopover = () => {
+    popover.hidden = true;
+    popover.dataset.dateKey = "";
+    popover.dataset.editId = "";
+  };
+
+  const clearPressTimer = () => {
+    if (pressTimer) {
+      window.clearTimeout(pressTimer);
+      pressTimer = 0;
+    }
+    pressedKey = null;
+  };
+
+  refs.calendarGrid.addEventListener("touchstart", (event) => {
+    const button = event.target.closest("[data-date-key]");
+    if (!button) return;
+    const touch = event.touches?.[0];
+    if (touch) lastTouchPos = { x: touch.clientX, y: touch.clientY };
+    pressedKey = button.dataset.dateKey;
+    clearPressTimer();
+    pressTimer = window.setTimeout(() => {
+      openPopover(pressedKey, button);
+      pressTimer = 0;
+    }, 520);
+  }, { passive: true });
+
+  refs.calendarGrid.addEventListener("touchmove", (event) => {
+    const touch = event.touches?.[0];
+    if (!touch || !pressTimer) return;
+    const dx = Math.abs(touch.clientX - lastTouchPos.x);
+    const dy = Math.abs(touch.clientY - lastTouchPos.y);
+    if (dx > 8 || dy > 8) clearPressTimer();
+  }, { passive: true });
+
+  refs.calendarGrid.addEventListener("touchend", clearPressTimer, { passive: true });
+  refs.calendarGrid.addEventListener("touchcancel", clearPressTimer, { passive: true });
+
+  refs.calendarGrid.addEventListener("contextmenu", (event) => {
+    const button = event.target.closest("[data-date-key]");
+    if (!button) return;
+    event.preventDefault();
+    openPopover(button.dataset.dateKey, button);
+  });
+
+  closeBtn?.addEventListener("click", () => closePopover());
+  popover.addEventListener("click", (event) => {
+    if (event.target === popover) closePopover();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !popover.hidden) closePopover();
+  });
+
+  window.addEventListener("resize", () => {
+    if (!popover.hidden) closePopover();
+  });
+
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const dateKey = popover.dataset.dateKey;
+    if (!dateKey) return;
+    const profit = Number(profitInput?.value);
+    if (!Number.isFinite(profit)) {
+      profitInput?.focus();
+      return;
+    }
+    const existingId = popover.dataset.editId || "";
+    const existing = existingId ? state.localEntries.find((e) => e.id === existingId) : null;
+    const entry = {
+      id: existing ? existing.id : createEntryId(),
+      createdAt: existing ? existing.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      targetDate: dateKey,
+      kanshi: getKanshiForDateKey(dateKey, CONFIG),
+      profit,
+      memo: String(memoInput?.value || "").trim()
+    };
+    addLocalEntry(entry);
+    state.selectedDateKey = dateKey;
+    setFormStatus(`${dateKey} の収支を保存しました (クイック入力)。`, "success");
+    closePopover();
+    render();
+  });
+}
+
+function positionQuickPopover(popover, anchor) {
+  if (!anchor) return;
+  const inner = popover.querySelector(".quick-input-inner");
+  if (!inner) return;
+  // Let it render first so we can measure.
+  inner.style.left = "0px";
+  inner.style.top = "0px";
+  const anchorRect = anchor.getBoundingClientRect();
+  const rect = inner.getBoundingClientRect();
+  const gutter = 10;
+  let left = anchorRect.left + anchorRect.width / 2 - rect.width / 2;
+  let top = anchorRect.bottom + gutter;
+  if (left + rect.width > window.innerWidth - 12) left = window.innerWidth - rect.width - 12;
+  if (left < 12) left = 12;
+  if (top + rect.height > window.innerHeight - 12) {
+    top = Math.max(12, anchorRect.top - rect.height - gutter);
+  }
+  inner.style.left = `${Math.round(left)}px`;
+  inner.style.top = `${Math.round(top)}px`;
 }
 
 function setLogToolStatus(message, tone = "info") {

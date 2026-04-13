@@ -94,6 +94,10 @@
                 <button type="button" class="filter-chip" data-filter="top">★◎のみ</button>
                 <button type="button" class="filter-chip" data-filter="recorded">実績あり</button>
               </div>
+              <label class="calendar-jump">
+                <span class="calendar-jump-label">日付へ</span>
+                <input id="calendarJumpInput" type="date" aria-label="指定日にジャンプ">
+              </label>
               <button id="jumpTodayButton" class="today-jump-button" type="button">今日へ移動</button>
             </div>
             <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="3か月カレンダー"></div>
@@ -228,6 +232,34 @@
         </details>
 
       </main>
+    </div>
+
+    <button id="formFab" class="form-fab" type="button" aria-label="成績入力へ移動">
+      <span class="form-fab-icon" aria-hidden="true">＋</span>
+      <span class="form-fab-text">入力</span>
+    </button>
+
+    <div id="quickInputPopover" class="quick-input-popover" role="dialog" aria-modal="false" aria-label="クイック収支入力" hidden>
+      <div class="quick-input-inner">
+        <header class="quick-input-head">
+          <div>
+            <span class="quick-input-date"></span>
+            <strong class="quick-input-kanshi"></strong>
+          </div>
+          <button type="button" class="quick-input-close" aria-label="閉じる">×</button>
+        </header>
+        <form class="quick-input-form">
+          <label class="quick-input-field">
+            <span>収支</span>
+            <input type="number" step="100" name="profit" inputmode="numeric" placeholder="例: 18500 / -32000" required>
+          </label>
+          <label class="quick-input-field quick-input-memo-field">
+            <span>メモ</span>
+            <input type="text" name="memo" placeholder="任意">
+          </label>
+          <button type="submit" class="quick-input-submit">保存</button>
+        </form>
+      </div>
     </div>
 
     <script>
