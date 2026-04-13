@@ -81,7 +81,8 @@ const refs = {
   logToolStatus: document.getElementById("logToolStatus"),
   calendarJumpInput: document.getElementById("calendarJumpInput"),
   formFab: document.getElementById("formFab"),
-  quickInputPopover: document.getElementById("quickInputPopover")
+  quickInputPopover: document.getElementById("quickInputPopover"),
+  exportReportButton: document.getElementById("exportReportButton")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -337,6 +338,10 @@ function wireEvents() {
     });
   });
 
+  refs.exportReportButton?.addEventListener("click", () => {
+    exportMonthlyReportImage();
+  });
+
   refs.formFab?.addEventListener("click", () => {
     if (refs.resultForm && refs.resultForm.scrollIntoView) {
       refs.resultForm.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -534,6 +539,195 @@ function setLogToolStatus(message, tone = "info") {
   if (!refs.logToolStatus) return;
   refs.logToolStatus.textContent = message;
   refs.logToolStatus.dataset.tone = tone;
+}
+
+function exportMonthlyReportImage() {
+  try {
+    const progress = computeMonthlyProgress();
+    const streak = computeStreak();
+    const records = getComputedRecords();
+    const months = getMonthModels(records);
+    const summary = getSummary(months);
+
+    const width = 960;
+    const height = 540;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas unavailable");
+
+    // Background
+    const bg = ctx.createLinearGradient(0, 0, width, height);
+    bg.addColorStop(0, "#1d1a14");
+    bg.addColorStop(1, "#0f1014");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+
+    // Accent stripe
+    ctx.fillStyle = "rgba(221, 187, 114, 0.14)";
+    ctx.fillRect(0, 0, width, 6);
+
+    // Title
+    ctx.fillStyle = "#f3d9a7";
+    ctx.font = "bold 36px 'Zen Old Mincho', serif";
+    ctx.fillText("打つべきか 月次レポート", 48, 64);
+
+    // Subtitle (month prefix + date)
+    ctx.fillStyle = "#b7a98b";
+    ctx.font = "500 18px 'Zen Kaku Gothic New', sans-serif";
+    const stamp = new Date().toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" });
+    ctx.fillText(`${progress.monthPrefix.replace("-", "/")} 時点 / 生成 ${stamp}`, 48, 96);
+
+    // Monthly profit (big)
+    const profitColor = progress.total > 0 ? "#8fd26d" : progress.total < 0 ? "#de6a63" : "#f5efe2";
+    ctx.fillStyle = profitColor;
+    ctx.font = "900 68px 'Zen Old Mincho', serif";
+    ctx.fillText(formatYen(progress.total), 48, 180);
+
+    // Monthly stats row
+    ctx.fillStyle = "#b7a98b";
+    ctx.font = "500 18px 'Zen Kaku Gothic New', sans-serif";
+    const winRate = progress.days > 0 ? Math.round((progress.wins / progress.days) * 100) : null;
+    const monthlyStatsLine = `今月 ${progress.days}日 / 勝率 ${winRate === null ? "—" : `${winRate}%`} / ${streak.kind === "win" ? `連勝 ${streak.count}日` : streak.kind === "lose" ? `連敗 ${streak.count}日` : "実績なし"}`;
+    ctx.fillText(monthlyStatsLine, 48, 220);
+
+    // Goal progress bar
+    const goal = Number(state.goal.monthly) || 0;
+    const ratio = goal > 0 ? Math.max(0, Math.min(1.2, progress.total / goal)) : 0;
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(48, 250, 640, 14);
+    const barGrad = ctx.createLinearGradient(48, 0, 688, 0);
+    barGrad.addColorStop(0, "rgba(221, 187, 114, 0.9)");
+    barGrad.addColorStop(1, "rgba(143, 210, 109, 0.9)");
+    ctx.fillStyle = barGrad;
+    ctx.fillRect(48, 250, Math.min(640 * ratio, 640), 14);
+    ctx.fillStyle = "#b7a98b";
+    ctx.font = "500 16px 'Zen Kaku Gothic New', sans-serif";
+    ctx.fillText(goal > 0 ? `目標 ${formatYen(goal)} / 進捗 ${Math.round(ratio * 100)}%` : "目標未設定", 48, 286);
+
+    // 3-month counts panel on the right
+    const rightX = 720;
+    const countsY = 150;
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    roundedRect(ctx, rightX - 12, countsY - 30, 200, 170, 18);
+    ctx.fill();
+    ctx.fillStyle = "#b7a98b";
+    ctx.font = "600 14px 'Zen Kaku Gothic New', sans-serif";
+    ctx.fillText("3か月 内訳", rightX, countsY - 10);
+    const rows = [
+      { label: "★ 完璧", value: summary.perfect, color: "#f3d9a7" },
+      { label: "◎ 絶好", value: summary.special, color: "#41c983" },
+      { label: "○ 行く", value: summary.go, color: "#8fd26d" },
+      { label: "△ 保留", value: summary.hold, color: "#e7b94c" },
+      { label: "× 見送", value: summary.avoid, color: "#de6a63" }
+    ];
+    rows.forEach((row, i) => {
+      const y = countsY + 20 + i * 24;
+      ctx.fillStyle = row.color;
+      ctx.font = "700 16px 'Zen Kaku Gothic New', sans-serif";
+      ctx.fillText(row.label, rightX, y);
+      ctx.fillStyle = "#f5efe2";
+      ctx.font = "800 16px 'Zen Kaku Gothic New', sans-serif";
+      const text = `${row.value}`;
+      const w = ctx.measureText(text).width;
+      ctx.fillText(text, rightX + 176 - w, y);
+    });
+
+    // Mini trend line (last 30 days cumulative) along the bottom
+    const { entries } = getDedupedAggregateEntries();
+    const byDate = new Map();
+    for (const entry of entries) {
+      const key = normalizeTargetDate(entry.targetDate);
+      const profit = Number(entry.profit);
+      if (key && Number.isFinite(profit)) byDate.set(key, (byDate.get(key) || 0) + profit);
+    }
+    const todayKey = getTodayDateKey();
+    const anchor = new Date(`${todayKey}T12:00:00Z`);
+    const points = [];
+    let cum = 0;
+    for (let i = 29; i >= 0; i -= 1) {
+      const date = new Date(anchor.getTime() - i * 86400000);
+      const y = date.getUTCFullYear();
+      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(date.getUTCDate()).padStart(2, "0");
+      cum += byDate.get(`${y}-${m}-${d}`) || 0;
+      points.push(cum);
+    }
+    const chartX = 48;
+    const chartY = 340;
+    const chartW = 864;
+    const chartH = 140;
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    roundedRect(ctx, chartX, chartY, chartW, chartH, 16);
+    ctx.fill();
+    ctx.fillStyle = "#b7a98b";
+    ctx.font = "600 14px 'Zen Kaku Gothic New', sans-serif";
+    ctx.fillText("収支推移 (直近30日 累計)", chartX + 16, chartY + 24);
+    const cmin = Math.min(0, ...points);
+    const cmax = Math.max(0, ...points);
+    const cSpan = (cmax - cmin) || 1;
+    const plotX = chartX + 20;
+    const plotY = chartY + 36;
+    const plotW = chartW - 40;
+    const plotH = chartH - 56;
+    // zero axis
+    const zeroY = plotY + plotH * (1 - (0 - cmin) / cSpan);
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.moveTo(plotX, zeroY);
+    ctx.lineTo(plotX + plotW, zeroY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // line
+    ctx.strokeStyle = "#ddbb72";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    points.forEach((v, i) => {
+      const px = plotX + (plotW * i) / Math.max(1, points.length - 1);
+      const py = plotY + plotH * (1 - (v - cmin) / cSpan);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    // Footer
+    ctx.fillStyle = "rgba(245, 239, 226, 0.45)";
+    ctx.font = "500 14px 'Zen Kaku Gothic New', sans-serif";
+    ctx.fillText("打つべきか、打たないべきか — Sexagenary Slot Calendar", 48, height - 24);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setFormStatus("画像生成に失敗しました。", "warn");
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `slot-kanshi-monthly-${progress.monthPrefix}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  } catch (error) {
+    setFormStatus("月次レポートの書き出しに失敗しました。", "warn");
+  }
+}
+
+function roundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 function exportEntriesToJson() {
@@ -1430,6 +1624,19 @@ function renderSelectedDay() {
         </div>
       </div>
 
+      <div class="selected-summary-row">
+        <span class="selected-summary-score">スコア <strong>${formatScoreValue(day.record.score)}</strong></span>
+        <span class="selected-summary-avg">実績 <strong>${formatYen(day.record.avg)}</strong></span>
+        <span class="selected-summary-confidence ${confidenceToneClass}">${confidence.stars} ${confidence.shortLabel}</span>
+      </div>
+
+      <details class="selected-details" open>
+        <summary class="selected-details-summary">
+          <span class="selected-details-open">詳細を隠す</span>
+          <span class="selected-details-close">詳細を表示</span>
+          <span class="selected-details-arrow" aria-hidden="true"></span>
+        </summary>
+
       <div class="confidence-panel ${confidenceToneClass}">
         <div class="confidence-head">
           <span class="confidence-kicker">信頼度</span>
@@ -1482,6 +1689,7 @@ function renderSelectedDay() {
 
       ${buildScoreBreakdownBar(day)}
       ${buildSameKanshiComparison(day.kanshi, day.dateKey)}
+      </details>
     `;
   } catch (error) {
     refs.selectedDayPanel.innerHTML = `

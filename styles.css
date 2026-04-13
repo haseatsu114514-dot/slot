@@ -366,6 +366,20 @@ a {
   white-space: nowrap;
 }
 
+.panel-link-button {
+  border: 1px solid rgba(221, 187, 114, 0.45);
+  background: rgba(221, 187, 114, 0.14);
+  color: var(--gold-soft);
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.panel-link-button:hover {
+  background: rgba(221, 187, 114, 0.26);
+}
+
 /* ============================= Summary ============================= */
 
 .summary-cards {
@@ -1640,6 +1654,75 @@ html[data-theme="light"] .month-accordion-summary {
 
 .selected-badge strong {
   font-size: 0.8rem;
+}
+
+.selected-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: baseline;
+  padding: 8px 0 12px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.selected-summary-row strong {
+  color: var(--text);
+  font-size: 0.95rem;
+  margin-left: 4px;
+}
+
+.selected-summary-confidence.is-good { color: var(--go); }
+.selected-summary-confidence.is-caution { color: var(--hold); }
+
+.selected-details {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.selected-details > *:first-child {
+  margin-top: 8px;
+}
+
+.selected-details-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.selected-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.selected-details-open { display: none; }
+.selected-details-close { display: inline; }
+.selected-details[open] .selected-details-open { display: inline; }
+.selected-details[open] .selected-details-close { display: none; }
+
+.selected-details-arrow {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+  opacity: 0.7;
+}
+
+.selected-details[open] .selected-details-arrow {
+  transform: rotate(-135deg);
 }
 
 .confidence-panel {
