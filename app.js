@@ -1181,7 +1181,9 @@ async function postEntryToSheets(entry) {
   const response = await fetch(CONFIG.syncEndpoint, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      // Apps Script は application/json だと preflight で落ちやすいので、
+      // simple request 扱いになる text/plain で JSON を送る。
+      "Content-Type": "text/plain;charset=utf-8",
       Accept: "application/json"
     },
     body: JSON.stringify({
@@ -1191,7 +1193,13 @@ async function postEntryToSheets(entry) {
     })
   });
 
-  const payload = await response.json();
+  const raw = await response.text();
+  let payload = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    throw new Error("invalid sync response");
+  }
   if (!response.ok || !payload.ok) {
     throw new Error(payload.error || "save failed");
   }
