@@ -529,6 +529,74 @@ export function getOpportunityStatus(record) {
   };
 }
 
+export function getConfidence(record) {
+  const days = Number(record?.days) || 0;
+  if (days <= 0) {
+    return {
+      level: 0,
+      label: "データなし",
+      shortLabel: "未",
+      tone: "neutral",
+      note: "この干支の実績がまだありません。予測値だけを参考にしてください。",
+      stars: "☆☆☆☆☆",
+      sample: days
+    };
+  }
+  if (days === 1) {
+    return {
+      level: 1,
+      label: "参考程度",
+      shortLabel: "低",
+      tone: "caution",
+      note: "サンプルが1件しかないため、偶然の影響が非常に大きいです。",
+      stars: "★☆☆☆☆",
+      sample: days
+    };
+  }
+  if (days === 2) {
+    return {
+      level: 2,
+      label: "低め",
+      shortLabel: "低",
+      tone: "caution",
+      note: "サンプル2件のみ。ブレが大きい前提で見てください。",
+      stars: "★★☆☆☆",
+      sample: days
+    };
+  }
+  if (days <= 4) {
+    return {
+      level: 3,
+      label: "中くらい",
+      shortLabel: "中",
+      tone: "neutral",
+      note: "サンプル数はそこそこ。傾向の参考にはなる範囲です。",
+      stars: "★★★☆☆",
+      sample: days
+    };
+  }
+  if (days <= 7) {
+    return {
+      level: 4,
+      label: "やや高い",
+      shortLabel: "高",
+      tone: "good",
+      note: "サンプル数が十分あり、実績が示す傾向は信頼しやすいです。",
+      stars: "★★★★☆",
+      sample: days
+    };
+  }
+  return {
+    level: 5,
+    label: "高い",
+    shortLabel: "最高",
+    tone: "good",
+    note: "サンプル数が豊富で、実績平均の信頼度は高めです。",
+    stars: "★★★★★",
+    sample: days
+  };
+}
+
 export function formatYen(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "データ無";
   const number = Number(value);
@@ -569,6 +637,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     ...monthContextBase,
     expectedInfluence: getMonthPillarExpectedInfluence(monthContextBase.kanshi, records)
   };
+  const confidence = getConfidence(record);
   const expectedBaseValue = Math.round(blendExpected(record.avg, record.sendan, record.days));
   const expectedAdjustmentValue =
     monthContext.expectedInfluence +
@@ -592,10 +661,133 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     monthContext,
     specialDateContext,
     weekdayContext,
+    confidence,
     expectedBaseValue,
     expectedAdjustmentValue,
     expectedValue: expectedBaseValue + expectedAdjustmentValue
   };
+}
+
+export function buildEntriesMap(seedEntries = SEED_MONTHLY_ENTRIES, extraEntries = []) {
+  const map = {};
+  for (const [kanshi, values] of Object.entries(seedEntries || {})) {
+    map[kanshi] = Array.isArray(values) ? [...values] : [];
+  }
+  for (const entry of extraEntries) {
+    if (!entry || !entry.kanshi) continue;
+    const profit = Number(entry.profit);
+    if (!Number.isFinite(profit)) continue;
+    if (!map[entry.kanshi]) map[entry.kanshi] = [];
+    map[entry.kanshi].push(profit);
+  }
+  return map;
+}
+
+function aggregateValues(values = []) {
+  let wins = 0;
+  let losses = 0;
+  let total = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    if (value > 0) wins += 1;
+    else losses += 1;
+    total += value;
+  }
+  const days = wins + losses;
+  const rating = wins - losses;
+  const daily = days > 0 ? Math.round(total / days) : 0;
+  const hourly = days > 0 ? Math.round(total / days / HOURS_PER_DAY) : 0;
+  return { wins, losses, rating, total, daily, hourly, days };
+}
+
+export function aggregateByStem(entriesMap) {
+  return HEAVENLY_STEMS.map((stem) => {
+    const values = [];
+    for (const branch of EARTHLY_BRANCHES) {
+      const key = stem + branch;
+      if (!SEXAGENARY_CYCLE.includes(key)) continue;
+      const list = entriesMap[key];
+      if (Array.isArray(list)) values.push(...list);
+    }
+    const agg = aggregateValues(values);
+    return {
+      key: stem,
+      label: STEM_LABELS[stem] || "",
+      element: STEM_ELEMENT[stem] || "",
+      ...agg
+    };
+  });
+}
+
+export function aggregateByBranch(entriesMap) {
+  return EARTHLY_BRANCHES.map((branch) => {
+    const values = [];
+    for (const stem of HEAVENLY_STEMS) {
+      const key = stem + branch;
+      if (!SEXAGENARY_CYCLE.includes(key)) continue;
+      const list = entriesMap[key];
+      if (Array.isArray(list)) values.push(...list);
+    }
+    const agg = aggregateValues(values);
+    return {
+      key: branch,
+      label: BRANCH_LABELS[branch] || "",
+      element: BRANCH_ELEMENT[branch] || "",
+      ...agg
+    };
+  });
+}
+
+export function aggregateByElement(stemRows, branchRows) {
+  return ELEMENT_ORDER.map((element) => {
+    const heaven = stemRows
+      .filter((row) => row.element === element)
+      .reduce((sum, row) => sum + row.rating, 0);
+    const earth = branchRows
+      .filter((row) => row.element === element)
+      .reduce((sum, row) => sum + row.rating, 0);
+    return {
+      element,
+      heaven,
+      earth,
+      total: heaven + earth
+    };
+  });
+}
+
+export function aggregateByRatingTier(records) {
+  const tiers = [
+    { key: "special", label: "◎ 絶好 (スコア7以上)", filter: (record) => record.score >= RATING_THRESHOLDS.specialMin },
+    { key: "go", label: "○ 行くべき (スコア5-6)", filter: (record) => record.score >= RATING_THRESHOLDS.goMin && record.score < RATING_THRESHOLDS.specialMin },
+    { key: "hold", label: "△ どちらでも (スコア3-4)", filter: (record) => record.score >= RATING_THRESHOLDS.holdMin && record.score < RATING_THRESHOLDS.goMin },
+    { key: "avoid", label: "× 見送り (スコア2以下)", filter: (record) => record.score < RATING_THRESHOLDS.holdMin }
+  ];
+
+  return tiers.map((tier) => {
+    const entries = Object.values(records).filter(tier.filter);
+    const count = entries.length;
+    if (count === 0) {
+      return { key: tier.key, label: tier.label, count: 0, avgActual: null, avgSendan: null, avgExpected: null };
+    }
+
+    const actualList = entries
+      .map((entry) => entry.avg)
+      .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
+    const sendanList = entries
+      .map((entry) => entry.sendan)
+      .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
+    const expectedList = entries.map((entry) => blendExpected(entry.avg, entry.sendan, entry.days || 0));
+    const mean = (list) => (list.length ? Math.round(list.reduce((sum, value) => sum + value, 0) / list.length) : null);
+
+    return {
+      key: tier.key,
+      label: tier.label,
+      count,
+      avgActual: mean(actualList),
+      avgSendan: mean(sendanList),
+      avgExpected: mean(expectedList)
+    };
+  });
 }
 
 export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG) {
