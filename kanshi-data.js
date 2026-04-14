@@ -2,56 +2,6 @@ export const HEAVENLY_STEMS = ["甲", "乙", "丙", "丁", "戊", "己", "庚", 
 export const EARTHLY_BRANCHES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
 export const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
-export const STEM_ELEMENT = Object.freeze({
-  "甲": "木", "乙": "木",
-  "丙": "火", "丁": "火",
-  "戊": "土", "己": "土",
-  "庚": "金", "辛": "金",
-  "壬": "水", "癸": "水"
-});
-
-export const BRANCH_ELEMENT = Object.freeze({
-  "寅": "木", "卯": "木",
-  "巳": "火", "午": "火",
-  "辰": "土", "戌": "土", "丑": "土", "未": "土",
-  "申": "金", "酉": "金",
-  "子": "水", "亥": "水"
-});
-
-export const ELEMENT_ORDER = Object.freeze(["木", "火", "土", "金", "水"]);
-
-// 基準日主 = 辛 に対する通変星ラベル + 特殊補足（原シート準拠）
-export const STEM_LABELS = Object.freeze({
-  "甲": "正財",
-  "乙": "偏財",
-  "丙": "正官,調",
-  "丁": "偏官",
-  "戊": "印綬,補",
-  "己": "偏印",
-  "庚": "劫財",
-  "辛": "比肩",
-  "壬": "傷官,補",
-  "癸": "食神"
-});
-
-export const BRANCH_LABELS = Object.freeze({
-  "子": "半空,破",
-  "丑": "真空",
-  "寅": "",
-  "卯": "冲",
-  "辰": "合,飛",
-  "巳": "",
-  "午": "",
-  "未": "",
-  "申": "",
-  "酉": "刑",
-  "戌": "害,羊",
-  "亥": ""
-});
-
-// 1日あたりの営業時間（時給換算の分母）
-export const HOURS_PER_DAY = 3.5;
-
 export const DEFAULT_CONFIG = Object.freeze({
   anchorDate: "2026-04-07",
   anchorKanshi: "辛亥",
@@ -107,23 +57,6 @@ export const MONTH_BRANCH_STATUS_MAP = Object.freeze({
   "子": ["半空"],
   "丑": ["真空"],
   "卯": ["冲"]
-});
-
-// 月支ごとの季節的な微補正。期待収支が月ごとにのっぺりしないようにほんの少しだけ揺らす。
-// 大きく動かしたくないので -0.6 〜 +0.6 の範囲に抑える。
-export const MONTH_BRANCH_SEASONAL = Object.freeze({
-  "寅": Object.freeze({ adjustment: 0.4, label: "立春の勢いで追い風", tone: "good" }),
-  "卯": Object.freeze({ adjustment: -0.2, label: "春の芽吹きで集中しづらい", tone: "caution" }),
-  "辰": Object.freeze({ adjustment: 0.3, label: "土が整う安定期", tone: "good" }),
-  "巳": Object.freeze({ adjustment: 0.5, label: "火が立ち上がり勢いに乗る", tone: "good" }),
-  "午": Object.freeze({ adjustment: -0.3, label: "陽気が強すぎて判断が鈍る", tone: "caution" }),
-  "未": Object.freeze({ adjustment: -0.4, label: "土が淀みやすい時期", tone: "caution" }),
-  "申": Object.freeze({ adjustment: 0.3, label: "金の切れ味で引き締まる", tone: "good" }),
-  "酉": Object.freeze({ adjustment: 0.5, label: "金が最も澄む月", tone: "good" }),
-  "戌": Object.freeze({ adjustment: -0.2, label: "土の凝りで流れが重い", tone: "caution" }),
-  "亥": Object.freeze({ adjustment: 0.4, label: "水が巡り始める好機", tone: "good" }),
-  "子": Object.freeze({ adjustment: -0.3, label: "水が冷えて動きが鈍る", tone: "caution" }),
-  "丑": Object.freeze({ adjustment: -0.2, label: "土が固まり動きにくい", tone: "caution" })
 });
 
 export const WEEKDAY_EFFECTS = Object.freeze({
@@ -207,70 +140,6 @@ export const SEED_KANSHI_DATA = {
   "甲申": { score: -5, ts: "正財", avg: -36500, days: 1, sendan: -4104, tags: ["実績×"] },
   "乙丑": { score: -6, ts: "偏財", avg: -35000, days: 1, sendan: -7325, tags: ["空亡(真)", "実績×"] }
 };
-
-// 原シートの月別収支（干支ごとの個別日収支）。勝/負/総収支/日数の精密集計に使う
-export const SEED_MONTHLY_ENTRIES = Object.freeze({
-  "甲子": Object.freeze([49000, -4000]),
-  "乙丑": Object.freeze([-35000]),
-  "丙寅": Object.freeze([36000, -5000]),
-  "丁卯": Object.freeze([]),
-  "戊辰": Object.freeze([-9000, 45000]),
-  "己巳": Object.freeze([18500]),
-  "庚午": Object.freeze([55000, -22000]),
-  "辛未": Object.freeze([21000, -11000]),
-  "壬申": Object.freeze([14000, -8000]),
-  "癸酉": Object.freeze([18000, 7000]),
-  "甲戌": Object.freeze([5000, -18000]),
-  "乙亥": Object.freeze([20500]),
-  "丙子": Object.freeze([-81000]),
-  "丁丑": Object.freeze([-30000, -3000]),
-  "戊寅": Object.freeze([53000]),
-  "己卯": Object.freeze([-8500, 14000]),
-  "庚辰": Object.freeze([115000, 35000, -10000]),
-  "辛巳": Object.freeze([-13700, 2000, -19000]),
-  "壬午": Object.freeze([-17000, 3000]),
-  "癸未": Object.freeze([5000, -20000]),
-  "甲申": Object.freeze([-36500]),
-  "乙酉": Object.freeze([30000, -11000]),
-  "丙戌": Object.freeze([32000, 14000]),
-  "丁亥": Object.freeze([-9000, 25000, 21500]),
-  "戊子": Object.freeze([-36000]),
-  "己丑": Object.freeze([1200, 8000]),
-  "庚寅": Object.freeze([-21000, -30000]),
-  "辛卯": Object.freeze([2300, 27000]),
-  "壬辰": Object.freeze([-20000, -15000]),
-  "癸巳": Object.freeze([20000, -6000]),
-  "甲午": Object.freeze([-13000, 19000]),
-  "乙未": Object.freeze([-14000, -9500]),
-  "丙申": Object.freeze([17500, -11000, 8000, -5000]),
-  "丁酉": Object.freeze([45000, -8000]),
-  "戊戌": Object.freeze([61400, 3000]),
-  "己亥": Object.freeze([-4000, 76000]),
-  "庚子": Object.freeze([-4000, 56000, 12000]),
-  "辛丑": Object.freeze([-28000]),
-  "壬寅": Object.freeze([11000, 51000, -3000]),
-  "癸卯": Object.freeze([-47000, -10000]),
-  "甲辰": Object.freeze([-3000, -12000]),
-  "乙巳": Object.freeze([-35000]),
-  "丙午": Object.freeze([38000]),
-  "丁未": Object.freeze([2000, 19500]),
-  "戊申": Object.freeze([14000, -500]),
-  "己酉": Object.freeze([3000]),
-  "庚戌": Object.freeze([-42000]),
-  "辛亥": Object.freeze([167000, 48500, -3000]),
-  "壬子": Object.freeze([11000, 47000, -15000, 60000]),
-  "癸丑": Object.freeze([85000, -28000]),
-  "甲寅": Object.freeze([-9000, -21000]),
-  "乙卯": Object.freeze([-20000, 18500, -1000]),
-  "丙辰": Object.freeze([-36000, 21500]),
-  "丁巳": Object.freeze([45000, -15000, -24500, 5000]),
-  "戊午": Object.freeze([53500, -26000]),
-  "己未": Object.freeze([16000, -9500]),
-  "庚申": Object.freeze([-9000, -18000, -15000]),
-  "辛酉": Object.freeze([46000, 7500, -14000]),
-  "壬戌": Object.freeze([-12500, 500]),
-  "癸亥": Object.freeze([22000, -54000, 3000])
-});
 
 export function resolveConfig(overrides = {}) {
   return {
@@ -422,55 +291,15 @@ export function getMonthAdjustmentForStatuses(statuses = []) {
   return clamp(total, -2, 0);
 }
 
-export function getMonthSeasonalAdjustment(monthKanshi) {
-  if (!monthKanshi) return { adjustment: 0, label: "", tone: "neutral" };
-  const branch = monthKanshi.slice(1);
-  const seasonal = MONTH_BRANCH_SEASONAL[branch];
-  if (!seasonal) return { adjustment: 0, label: "", tone: "neutral" };
-  return { adjustment: seasonal.adjustment, label: seasonal.label, tone: seasonal.tone };
-}
-
-// 「自分が得意な月 / 苦手な月」を過去成績から算出した補正を返す。
-// personalMap は { 1: {adjustment, sample, avg}, 2: ..., 12: ... } の形。
-// 過去実績がその月に十分ない場合は 0 を返す。
-export function getPersonalMonthAdjustment(dateKey, personalMap) {
-  if (!personalMap) return null;
-  const calendarMonth = parseInt(String(dateKey).slice(5, 7), 10);
-  if (!calendarMonth) return null;
-  const entry = personalMap[calendarMonth];
-  if (!entry || !Number.isFinite(entry.adjustment)) return null;
-  const adj = entry.adjustment;
-  let label;
-  let tone;
-  if (adj > 0.15) {
-    label = `過去${calendarMonth}月は好調（平均 ${formatYen(entry.avg)}・${entry.sample}日）`;
-    tone = "good";
-  } else if (adj < -0.15) {
-    label = `過去${calendarMonth}月はやや苦手（平均 ${formatYen(entry.avg)}・${entry.sample}日）`;
-    tone = "caution";
-  } else {
-    label = `過去${calendarMonth}月はほぼ平均（平均 ${formatYen(entry.avg)}・${entry.sample}日）`;
-    tone = "neutral";
-  }
-  return { adjustment: adj, label, tone, sample: entry.sample, avg: entry.avg, source: "personal" };
-}
-
-export function getMonthContext(dateKey, options = {}) {
+export function getMonthContext(dateKey) {
   const monthKanshi = getMonthKanshiForDateKey(dateKey);
   const statuses = getMonthStatusesForKanshi(monthKanshi);
-  const statusAdjustment = getMonthAdjustmentForStatuses(statuses);
-
-  // 過去成績ベースの「得意/苦手」補正があれば優先。無ければ 0。
-  const personal = getPersonalMonthAdjustment(dateKey, options.monthlyPerformance);
-  const seasonal = personal || { adjustment: 0, label: "過去実績がまだ少ない月", tone: "neutral" };
-
-  const adjustment = clamp(statusAdjustment + seasonal.adjustment, -2.5, 0.6);
+  const adjustment = getMonthAdjustmentForStatuses(statuses);
   const transition = MONTH_PILLAR_TRANSITIONS.find((item) => item.startsAt.slice(0, 10) === dateKey) || null;
 
   return {
     kanshi: monthKanshi,
     statuses,
-    seasonal,
     adjustment,
     transition: transition
       ? {
@@ -539,6 +368,7 @@ export function getQualityScoreCap(record) {
   const tags = record?.tags || [];
   const hasActualBad = tags.some((tag) => tag.includes("実績×"));
   const needsMoreData = tags.some((tag) => tag.includes("要検証") || tag.includes("データ無"));
+  const strongTwoDayCandidate = avg !== null && avg >= 30000 && sendan >= 20000;
 
   let cap = 9;
 
@@ -557,7 +387,7 @@ export function getQualityScoreCap(record) {
   else if (sendan < 18000) cap = Math.min(cap, 8);
 
   if (days <= 1) cap = Math.min(cap, 6);
-  else if (days === 2) cap = Math.min(cap, 8);
+  else if (days === 2 && !strongTwoDayCandidate) cap = Math.min(cap, 8);
 
   if (needsMoreData) cap = Math.min(cap, 7);
 
@@ -710,7 +540,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
-  const monthContextBase = getMonthContext(dateKey, { monthlyPerformance: config.monthlyPerformance });
+  const monthContextBase = getMonthContext(dateKey);
   const specialDateContext = getSpecialDateContext(date);
   const opportunity = getOpportunityStatus(baseRecord);
   const baseSeedScore = applyQualityScoreCap(baseRecord, baseRecord.score);
@@ -735,7 +565,6 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   };
   const rating = getRating(record.score, record);
   const weekdayContext = getWeekdayContext(date.getUTCDay());
-  const confidence = getConfidence(record);
   const monthContext = {
     ...monthContextBase,
     expectedInfluence: getMonthPillarExpectedInfluence(monthContextBase.kanshi, records)
@@ -747,6 +576,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     Math.round(specialDateContext.adjustment * 2000) +
     Math.round(playStyle.adjustment * 3000) +
     Math.round(weekdayContext.adjustment * 1500);
+
   return {
     date,
     dateKey,
@@ -762,210 +592,10 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     monthContext,
     specialDateContext,
     weekdayContext,
-    confidence,
     expectedBaseValue,
     expectedAdjustmentValue,
     expectedValue: expectedBaseValue + expectedAdjustmentValue
   };
-}
-
-// 信頼度: 日数（サンプル数）に応じて、その干支データの信頼性を段階的に返す
-export function getConfidence(record) {
-  const days = Number(record?.days) || 0;
-  if (days <= 0) {
-    return {
-      level: 0,
-      label: "データなし",
-      shortLabel: "未",
-      tone: "neutral",
-      note: "この干支の実績がまだありません。予測値だけを参考にしてください。",
-      stars: "☆☆☆☆☆",
-      sample: days
-    };
-  }
-  if (days === 1) {
-    return {
-      level: 1,
-      label: "参考程度",
-      shortLabel: "低",
-      tone: "caution",
-      note: "サンプルが1件しかないため、偶然の影響が非常に大きいです。",
-      stars: "★☆☆☆☆",
-      sample: days
-    };
-  }
-  if (days === 2) {
-    return {
-      level: 2,
-      label: "低め",
-      shortLabel: "低",
-      tone: "caution",
-      note: "サンプル2件のみ。ブレが大きい前提で見てください。",
-      stars: "★★☆☆☆",
-      sample: days
-    };
-  }
-  if (days <= 4) {
-    return {
-      level: 3,
-      label: "中くらい",
-      shortLabel: "中",
-      tone: "neutral",
-      note: "サンプル数はそこそこ。傾向の参考にはなる範囲です。",
-      stars: "★★★☆☆",
-      sample: days
-    };
-  }
-  if (days <= 7) {
-    return {
-      level: 4,
-      label: "やや高い",
-      shortLabel: "高",
-      tone: "good",
-      note: "サンプル数が十分あり、実績が示す傾向は信頼しやすいです。",
-      stars: "★★★★☆",
-      sample: days
-    };
-  }
-  return {
-    level: 5,
-    label: "高い",
-    shortLabel: "最高",
-    tone: "good",
-    note: "サンプル数が豊富で、実績平均の信頼度は高めです。",
-    stars: "★★★★★",
-    sample: days
-  };
-}
-
-// ----- 天干・地支 集計 -----
-
-// ユーザー入力の追加エントリーをマージして、干支ごとの数値リストを返す
-export function buildEntriesMap(seedEntries = SEED_MONTHLY_ENTRIES, extraEntries = []) {
-  const map = {};
-  for (const [kanshi, values] of Object.entries(seedEntries)) {
-    map[kanshi] = Array.isArray(values) ? [...values] : [];
-  }
-  for (const entry of extraEntries) {
-    if (!entry || !entry.kanshi) continue;
-    const profit = Number(entry.profit);
-    if (!Number.isFinite(profit)) continue;
-    if (!map[entry.kanshi]) map[entry.kanshi] = [];
-    map[entry.kanshi].push(profit);
-  }
-  return map;
-}
-
-function aggregateValues(values = []) {
-  let wins = 0;
-  let losses = 0;
-  let total = 0;
-  for (const value of values) {
-    if (!Number.isFinite(value)) continue;
-    if (value > 0) wins += 1;
-    else losses += 1;
-    total += value;
-  }
-  const days = wins + losses;
-  const rating = wins - losses;
-  const daily = days > 0 ? Math.round(total / days) : 0;
-  const hourly = days > 0 ? Math.round(total / days / HOURS_PER_DAY) : 0;
-  return { wins, losses, rating, total, daily, hourly, days };
-}
-
-export function aggregateByStem(entriesMap) {
-  return HEAVENLY_STEMS.map((stem) => {
-    const values = [];
-    for (const branch of EARTHLY_BRANCHES) {
-      const key = stem + branch;
-      // Only valid sexagenary combinations exist; skip mismatched ones
-      if (!SEXAGENARY_CYCLE.includes(key)) continue;
-      const list = entriesMap[key];
-      if (Array.isArray(list)) values.push(...list);
-    }
-    const agg = aggregateValues(values);
-    return {
-      key: stem,
-      label: STEM_LABELS[stem] || "",
-      element: STEM_ELEMENT[stem] || "",
-      ...agg
-    };
-  });
-}
-
-export function aggregateByBranch(entriesMap) {
-  return EARTHLY_BRANCHES.map((branch) => {
-    const values = [];
-    for (const stem of HEAVENLY_STEMS) {
-      const key = stem + branch;
-      if (!SEXAGENARY_CYCLE.includes(key)) continue;
-      const list = entriesMap[key];
-      if (Array.isArray(list)) values.push(...list);
-    }
-    const agg = aggregateValues(values);
-    return {
-      key: branch,
-      label: BRANCH_LABELS[branch] || "",
-      element: BRANCH_ELEMENT[branch] || "",
-      ...agg
-    };
-  });
-}
-
-// 五行サマリー (天/地/評)
-export function aggregateByElement(stemRows, branchRows) {
-  return ELEMENT_ORDER.map((element) => {
-    const heaven = stemRows
-      .filter((row) => row.element === element)
-      .reduce((sum, row) => sum + row.rating, 0);
-    const earth = branchRows
-      .filter((row) => row.element === element)
-      .reduce((sum, row) => sum + row.rating, 0);
-    return {
-      element,
-      heaven,
-      earth,
-      total: heaven + earth
-    };
-  });
-}
-
-// サイト内の rating tier ごとに、干支群の平均を算出（信頼度・傾向の把握用）
-export function aggregateByRatingTier(records) {
-  const tiers = [
-    { key: "special", label: "◎ 絶好 (スコア7以上)", filter: (r) => r.score >= RATING_THRESHOLDS.specialMin },
-    { key: "go", label: "○ 行くべき (スコア5-6)", filter: (r) => r.score >= RATING_THRESHOLDS.goMin && r.score < RATING_THRESHOLDS.specialMin },
-    { key: "hold", label: "△ どちらでも (スコア3-4)", filter: (r) => r.score >= RATING_THRESHOLDS.holdMin && r.score < RATING_THRESHOLDS.goMin },
-    { key: "avoid", label: "× 見送り (スコア2以下)", filter: (r) => r.score < RATING_THRESHOLDS.holdMin }
-  ];
-
-  return tiers.map((tier) => {
-    const entries = Object.values(records).filter(tier.filter);
-    const count = entries.length;
-    if (count === 0) {
-      return { key: tier.key, label: tier.label, count: 0, avgActual: null, avgSendan: null, avgExpected: null };
-    }
-    const actualList = entries
-      .map((entry) => entry.avg)
-      .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
-    const sendanList = entries
-      .map((entry) => entry.sendan)
-      .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
-    const expectedList = entries.map((entry) =>
-      blendExpected(entry.avg, entry.sendan, entry.days || 0)
-    );
-
-    const mean = (arr) => (arr.length ? Math.round(arr.reduce((sum, v) => sum + v, 0) / arr.length) : null);
-
-    return {
-      key: tier.key,
-      label: tier.label,
-      count,
-      avgActual: mean(actualList),
-      avgSendan: mean(sendanList),
-      avgExpected: mean(expectedList)
-    };
-  });
 }
 
 export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG) {

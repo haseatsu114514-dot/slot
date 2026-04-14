@@ -104,8 +104,11 @@ function doPost(e) {
 
   if (body.action === "addResult") {
     const entry = normalizeEntry_(body.entry || {});
-    appendResult_(entry);
-    return json_(buildDashboard_());
+    var appended = appendResultIfNew_(entry);
+    var payload = buildDashboard_();
+    payload.appended = appended;
+    payload.duplicate = !appended;
+    return json_(payload);
   }
 
   return json_({ ok: false, error: "unknown_action" });
@@ -225,9 +228,10 @@ function readResultEntries_() {
     });
 }
 
-function appendResult_(entry) {
+function appendResultIfNew_(entry) {
   const sheet = getResultsSheet_();
   ensureHeader_(sheet, CONFIG.RESULTS_HEADER);
+  if (hasDuplicateEntry_(sheet, entry)) return false;
   sheet.appendRow([
     entry.id,
     entry.createdAt,
@@ -238,6 +242,38 @@ function appendResult_(entry) {
     entry.machine,
     entry.memo
   ]);
+  return true;
+}
+
+function hasDuplicateEntry_(sheet, entry) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+
+  var rows = sheet.getRange(2, 1, lastRow - 1, CONFIG.RESULTS_HEADER.length).getValues();
+  return rows.some(function(row) {
+    var existing = {
+      id: String(row[0] || ""),
+      targetDate: normalizeDateCell_(row[2]),
+      kanshi: String(row[3] || "").trim(),
+      profit: Number(row[4] || 0),
+      store: String(row[5] || "").trim(),
+      machine: String(row[6] || "").trim(),
+      memo: String(row[7] || "").trim()
+    };
+    return isSameEntry_(existing, entry);
+  });
+}
+
+function isSameEntry_(left, right) {
+  if (left.id && right.id && left.id === right.id) return true;
+  return (
+    normalizeDateString_(left.targetDate) === normalizeDateString_(right.targetDate) &&
+    String(left.kanshi || "").trim() === String(right.kanshi || "").trim() &&
+    Number(left.profit || 0) === Number(right.profit || 0) &&
+    String(left.store || "").trim() === String(right.store || "").trim() &&
+    String(left.machine || "").trim() === String(right.machine || "").trim() &&
+    String(left.memo || "").trim() === String(right.memo || "").trim()
+  );
 }
 
 function normalizeEntry_(input) {
@@ -365,6 +401,7 @@ function getQualityScoreCap_(record) {
     const text = String(tag);
     return text.indexOf("要検証") !== -1 || text.indexOf("データ無") !== -1;
   });
+  const strongTwoDayCandidate = avg !== null && avg >= 30000 && sendan >= 20000;
 
   var cap = 9;
 
@@ -383,7 +420,7 @@ function getQualityScoreCap_(record) {
   else if (sendan < 18000) cap = Math.min(cap, 8);
 
   if (days <= 1) cap = Math.min(cap, 6);
-  else if (days === 2) cap = Math.min(cap, 8);
+  else if (days === 2 && !strongTwoDayCandidate) cap = Math.min(cap, 8);
 
   if (needsMoreData) cap = Math.min(cap, 7);
 
