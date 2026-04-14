@@ -343,7 +343,8 @@ function computeLiveScore_(record) {
   const seedBlend = blendExpected_(record.seedAvg, record.sendan, record.seedDays);
   const liveBlend = blendExpected_(record.avg, record.sendan, record.days);
   const scoreShift = clamp_(Math.round((liveBlend - seedBlend) / 12000), -3, 3);
-  return clamp_(record.seedScore + scoreShift, -6, 9);
+  const shiftedScore = clamp_(record.seedScore + scoreShift, -6, 9);
+  return applyQualityScoreCap_(record, shiftedScore);
 }
 
 function blendExpected_(avg, sendan, days) {
@@ -352,6 +353,45 @@ function blendExpected_(avg, sendan, days) {
   const actualWeight = Math.min(Math.max(days, 1), 5);
   const forecastWeight = 2;
   return ((avg * actualWeight) + (forecast * forecastWeight)) / (actualWeight + forecastWeight);
+}
+
+function getQualityScoreCap_(record) {
+  const avg = toNumberOrNull_(record && record.avg, null);
+  const days = toNumberOrNull_(record && record.days, 0);
+  const sendan = toNumberOrNull_(record && record.sendan, 0);
+  const tags = (record && record.tags) || [];
+  const hasActualBad = tags.some(function(tag) { return String(tag).indexOf("実績×") !== -1; });
+  const needsMoreData = tags.some(function(tag) {
+    const text = String(tag);
+    return text.indexOf("要検証") !== -1 || text.indexOf("データ無") !== -1;
+  });
+
+  var cap = 9;
+
+  if (avg === null || days <= 0) return 4;
+
+  if (hasActualBad) cap = Math.min(cap, 4);
+
+  if (avg < 0) cap = Math.min(cap, 4);
+  else if (avg < 5000) cap = Math.min(cap, 6);
+  else if (avg < 12000) cap = Math.min(cap, 7);
+  else if (avg < 20000) cap = Math.min(cap, 8);
+
+  if (sendan < 0) cap = Math.min(cap, 4);
+  else if (sendan < 5000) cap = Math.min(cap, 6);
+  else if (sendan < 10000) cap = Math.min(cap, 7);
+  else if (sendan < 18000) cap = Math.min(cap, 8);
+
+  if (days <= 1) cap = Math.min(cap, 6);
+  else if (days === 2) cap = Math.min(cap, 8);
+
+  if (needsMoreData) cap = Math.min(cap, 7);
+
+  return clamp_(cap, -6, 9);
+}
+
+function applyQualityScoreCap_(record, proposedScore) {
+  return clamp_(Math.min(Number(proposedScore), getQualityScoreCap_(record)), -6, 9);
 }
 
 function ensureHeader_(sheet, header) {

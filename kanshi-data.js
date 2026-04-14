@@ -465,13 +465,29 @@ export function getMonthContext(dateKey, options = {}) {
   const seasonal = personal || { adjustment: 0, label: "過去実績がまだ少ない月", tone: "neutral" };
 
   const adjustment = clamp(statusAdjustment + seasonal.adjustment, -2.5, 0.6);
+  const transition = MONTH_PILLAR_TRANSITIONS.find((item) => item.startsAt.slice(0, 10) === dateKey) || null;
 
   return {
     kanshi: monthKanshi,
     statuses,
     seasonal,
-    adjustment
+    adjustment,
+    transition: transition
+      ? {
+          kanshi: transition.kanshi,
+          startsAt: transition.startsAt,
+          timeLabel: transition.startsAt.slice(11, 16),
+          label: `節入 ${transition.startsAt.slice(11, 16)} / ${transition.kanshi}へ`
+        }
+      : null
   };
+}
+
+export function getMonthPillarExpectedInfluence(monthKanshi, records) {
+  if (!monthKanshi || !records?.[monthKanshi]) return 0;
+  const monthRecord = records[monthKanshi];
+  const base = blendExpected(monthRecord.avg, monthRecord.sendan, monthRecord.days);
+  return Math.round(clamp(base * 0.22, -7000, 7000));
 }
 
 export function getWeekdayContext(weekday) {
@@ -516,11 +532,48 @@ export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+export function getQualityScoreCap(record) {
+  const avg = toNumberOrNull(record?.avg, null);
+  const days = toNumberOrNull(record?.days, 0);
+  const sendan = toNumberOrNull(record?.sendan, 0);
+  const tags = record?.tags || [];
+  const hasActualBad = tags.some((tag) => tag.includes("実績×"));
+  const needsMoreData = tags.some((tag) => tag.includes("要検証") || tag.includes("データ無"));
+
+  let cap = 9;
+
+  if (avg === null || days <= 0) return 4;
+
+  if (hasActualBad) cap = Math.min(cap, 4);
+
+  if (avg < 0) cap = Math.min(cap, 4);
+  else if (avg < 5000) cap = Math.min(cap, 6);
+  else if (avg < 12000) cap = Math.min(cap, 7);
+  else if (avg < 20000) cap = Math.min(cap, 8);
+
+  if (sendan < 0) cap = Math.min(cap, 4);
+  else if (sendan < 5000) cap = Math.min(cap, 6);
+  else if (sendan < 10000) cap = Math.min(cap, 7);
+  else if (sendan < 18000) cap = Math.min(cap, 8);
+
+  if (days <= 1) cap = Math.min(cap, 6);
+  else if (days === 2) cap = Math.min(cap, 8);
+
+  if (needsMoreData) cap = Math.min(cap, 7);
+
+  return clamp(cap, -6, 9);
+}
+
+export function applyQualityScoreCap(record, proposedScore) {
+  return clamp(Math.min(Number(proposedScore), getQualityScoreCap(record)), -6, 9);
+}
+
 export function computeLiveScore(record) {
   const seedBlend = blendExpected(record.seedAvg, record.sendan, record.seedDays);
   const liveBlend = blendExpected(record.avg, record.sendan, record.days);
   const scoreShift = clamp(Math.round((liveBlend - seedBlend) / 12000), -3, 3);
-  return clamp(record.seedScore + scoreShift, -6, 9);
+  const shiftedScore = clamp(record.seedScore + scoreShift, -6, 9);
+  return applyQualityScoreCap(record, shiftedScore);
 }
 
 export function applyEntriesToRecords(records, entries = []) {
@@ -657,26 +710,43 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
-  const monthContext = getMonthContext(dateKey, { monthlyPerformance: config.monthlyPerformance });
+  const monthContextBase = getMonthContext(dateKey, { monthlyPerformance: config.monthlyPerformance });
   const specialDateContext = getSpecialDateContext(date);
   const opportunity = getOpportunityStatus(baseRecord);
-  const provisionalScore = clamp(baseRecord.score + monthContext.adjustment + specialDateContext.adjustment, -6, 9);
+  const baseSeedScore = applyQualityScoreCap(baseRecord, baseRecord.score);
+  const provisionalScore = applyQualityScoreCap(
+    baseRecord,
+    clamp(baseSeedScore + monthContextBase.adjustment + specialDateContext.adjustment, -6, 9)
+  );
   const provisionalRecord = {
     ...baseRecord,
-    baseScore: baseRecord.score,
+    baseScore: baseSeedScore,
     score: provisionalScore,
-    monthAdjustment: monthContext.adjustment,
+    monthAdjustment: monthContextBase.adjustment,
     specialDateAdjustment: specialDateContext.adjustment
   };
   const playStyle = getPlayStyle(provisionalRecord);
+  const qualityCap = getQualityScoreCap(provisionalRecord);
   const record = {
     ...provisionalRecord,
-    score: clamp(provisionalScore + playStyle.adjustment, -6, 9),
+    score: applyQualityScoreCap(provisionalRecord, clamp(provisionalScore + playStyle.adjustment, -6, 9)),
+    qualityCap,
     playStyleAdjustment: playStyle.adjustment
   };
   const rating = getRating(record.score, record);
   const weekdayContext = getWeekdayContext(date.getUTCDay());
   const confidence = getConfidence(record);
+  const monthContext = {
+    ...monthContextBase,
+    expectedInfluence: getMonthPillarExpectedInfluence(monthContextBase.kanshi, records)
+  };
+  const expectedBaseValue = Math.round(blendExpected(record.avg, record.sendan, record.days));
+  const expectedAdjustmentValue =
+    monthContext.expectedInfluence +
+    Math.round(monthContext.adjustment * 2500) +
+    Math.round(specialDateContext.adjustment * 2000) +
+    Math.round(playStyle.adjustment * 3000) +
+    Math.round(weekdayContext.adjustment * 1500);
   return {
     date,
     dateKey,
@@ -693,7 +763,9 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     specialDateContext,
     weekdayContext,
     confidence,
-    expectedValue: Math.round(blendExpected(record.avg, record.sendan, record.days))
+    expectedBaseValue,
+    expectedAdjustmentValue,
+    expectedValue: expectedBaseValue + expectedAdjustmentValue
   };
 }
 
