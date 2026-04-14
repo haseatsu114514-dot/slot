@@ -387,14 +387,10 @@ function getDedupedAggregateEntries() {
 }
 
 function getAggregateEntriesMap() {
-  // シートと同期できているときは remoteEntries がシート全件を持っているので、
-  // SEED_MONTHLY_ENTRIES と足すと二重カウントになる。
-  // remote が来ている場合は remote + local (未同期ぶん) のみを使い、
-  // それ以外は SEED + local をベースにする。
-  const { entries, hasRemote } = getDedupedAggregateEntries();
-  if (hasRemote) {
-    return buildEntriesMap({}, entries);
-  }
+  // 現在の Apps Script は「実績入力」の追加分だけを返していて、
+  // 元シート由来の履歴までは remoteEntries に含めていない。
+  // そのため、集計は常にベース履歴 + 追加入力の合算で扱う。
+  const { entries } = getDedupedAggregateEntries();
   return buildEntriesMap(SEED_MONTHLY_ENTRIES, entries);
 }
 
