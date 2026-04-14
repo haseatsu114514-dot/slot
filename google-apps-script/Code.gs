@@ -386,8 +386,8 @@ function computeLiveScore_(record) {
 function blendExpected_(avg, sendan, days) {
   const forecast = toNumberOrNull_(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
-  const actualWeight = Math.min(Math.max(days, 1), 5);
-  const forecastWeight = 2;
+  const actualWeight = Math.min(Math.max(days, 1), 6);
+  const forecastWeight = 1.5;
   return ((avg * actualWeight) + (forecast * forecastWeight)) / (actualWeight + forecastWeight);
 }
 

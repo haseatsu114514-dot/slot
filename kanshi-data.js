@@ -463,8 +463,8 @@ export function isPerfectRecord(record) {
 export function blendExpected(avg, sendan, days) {
   const forecast = toNumberOrNull(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
-  const actualWeight = Math.min(Math.max(days, 1), 5);
-  const forecastWeight = 2;
+  const actualWeight = Math.min(Math.max(days, 1), 6);
+  const forecastWeight = 1.5;
   return ((avg * actualWeight) + (forecast * forecastWeight)) / (actualWeight + forecastWeight);
 }
 
@@ -868,7 +868,8 @@ export function aggregateByElement(stemRows, branchRows) {
 
 export function aggregateByRatingTier(records) {
   const tiers = [
-    { key: "special", label: "◎ 絶好 (スコア7以上)", filter: (record) => record.score >= RATING_THRESHOLDS.specialMin },
+    { key: "perfect", label: "★ 完璧 (スコア9)", filter: (record) => isPerfectRecord(record) },
+    { key: "special", label: "◎ 絶好 (スコア7-8)", filter: (record) => record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(record) },
     { key: "go", label: "○ 行くべき (スコア5-6)", filter: (record) => record.score >= RATING_THRESHOLDS.goMin && record.score < RATING_THRESHOLDS.specialMin },
     { key: "hold", label: "△ どちらでも (スコア3-4)", filter: (record) => record.score >= RATING_THRESHOLDS.holdMin && record.score < RATING_THRESHOLDS.goMin },
     { key: "avoid", label: "× 見送り (スコア2以下)", filter: (record) => record.score < RATING_THRESHOLDS.holdMin }
