@@ -2,6 +2,54 @@ export const HEAVENLY_STEMS = ["甲", "乙", "丙", "丁", "戊", "己", "庚", 
 export const EARTHLY_BRANCHES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
 export const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
+export const STEM_ELEMENT = Object.freeze({
+  "甲": "木", "乙": "木",
+  "丙": "火", "丁": "火",
+  "戊": "土", "己": "土",
+  "庚": "金", "辛": "金",
+  "壬": "水", "癸": "水"
+});
+
+export const BRANCH_ELEMENT = Object.freeze({
+  "寅": "木", "卯": "木",
+  "巳": "火", "午": "火",
+  "辰": "土", "戌": "土", "丑": "土", "未": "土",
+  "申": "金", "酉": "金",
+  "子": "水", "亥": "水"
+});
+
+export const ELEMENT_ORDER = Object.freeze(["木", "火", "土", "金", "水"]);
+
+export const STEM_LABELS = Object.freeze({
+  "甲": "正財",
+  "乙": "偏財",
+  "丙": "正官,調",
+  "丁": "偏官",
+  "戊": "印綬,補",
+  "己": "偏印",
+  "庚": "劫財",
+  "辛": "比肩",
+  "壬": "傷官,補",
+  "癸": "食神"
+});
+
+export const BRANCH_LABELS = Object.freeze({
+  "子": "半空,破",
+  "丑": "真空",
+  "寅": "",
+  "卯": "冲",
+  "辰": "合,飛",
+  "巳": "",
+  "午": "",
+  "未": "",
+  "申": "",
+  "酉": "刑",
+  "戌": "害,羊",
+  "亥": ""
+});
+
+export const HOURS_PER_DAY = 3.5;
+
 export const DEFAULT_CONFIG = Object.freeze({
   anchorDate: "2026-04-07",
   anchorKanshi: "辛亥",
