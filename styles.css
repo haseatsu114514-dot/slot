@@ -828,6 +828,10 @@ details[open] .collapsible-arrow {
   font-variant-numeric: tabular-nums;
 }
 
+.kyusei-table {
+  min-width: 420px;
+}
+
 .aggregate-table th,
 .aggregate-table td {
   padding: 8px 8px;
@@ -2541,6 +2545,7 @@ html[data-theme="light"] .month-accordion-summary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0 3px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   font-variant-numeric: tabular-nums;
@@ -2555,6 +2560,9 @@ html[data-theme="light"] .month-accordion-summary {
 
 .heatmap-cell-value {
   font-weight: 700;
+  font-size: 0.64rem;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
 }
 
 /* ============================= Score Breakdown ============================= */

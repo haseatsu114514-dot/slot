@@ -13,6 +13,7 @@ import {
   getPlayStyle,
   getRating,
   getKanshiForDateKey,
+  getKyuseiForDateKey,
   getConfidence,
   RATING_THRESHOLDS,
   isPerfectRecord,
@@ -61,6 +62,7 @@ const refs = {
   stemTable: document.getElementById("stemTable"),
   branchTable: document.getElementById("branchTable"),
   elementTable: document.getElementById("elementTable"),
+  kyuseiTable: document.getElementById("kyuseiTable"),
   ratingSummaryTable: document.getElementById("ratingSummaryTable"),
   mobileStickyDetail: document.getElementById("mobileStickyDetail"),
   syncBadgeText: document.getElementById("syncBadgeText"),
@@ -1419,9 +1421,11 @@ function getActiveConfig() {
 
 function renderAggregates(records) {
   const entriesMap = getAggregateEntriesMap();
+  const { entries } = getDedupedAggregateEntries();
   const stemRows = aggregateByStem(entriesMap);
   const branchRows = aggregateByBranch(entriesMap);
   const elementRows = aggregateByElement(stemRows, branchRows);
+  const kyuseiRows = aggregateEntriesByKyusei(entries);
   const ratingRows = aggregateByRatingTier(records);
 
   if (refs.stemTable) {
@@ -1433,9 +1437,45 @@ function renderAggregates(records) {
   if (refs.elementTable) {
     refs.elementTable.innerHTML = buildElementTable(elementRows);
   }
+  if (refs.kyuseiTable) {
+    refs.kyuseiTable.innerHTML = buildStemBranchTable(kyuseiRows, "九星");
+  }
   if (refs.ratingSummaryTable) {
     refs.ratingSummaryTable.innerHTML = buildRatingSummaryTable(ratingRows);
   }
+}
+
+function aggregateEntriesByKyusei(entries = []) {
+  const rows = KYUSEI_NAMES.map((name) => ({
+    key: name,
+    label: "",
+    wins: 0,
+    losses: 0,
+    total: 0,
+    days: 0,
+    daily: 0,
+    hourly: 0
+  }));
+
+  for (const entry of entries) {
+    const dateKey = normalizeTargetDate(entry?.targetDate);
+    if (!dateKey) continue;
+    const profit = Number(entry?.profit);
+    if (!Number.isFinite(profit)) continue;
+    const kyusei = getKyuseiForDateKey(dateKey);
+    const row = rows[kyusei.number - 1];
+    if (!row) continue;
+    row.total += profit;
+    row.days += 1;
+    if (profit > 0) row.wins += 1;
+    if (profit < 0) row.losses += 1;
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    daily: row.days ? Math.round(row.total / row.days) : 0,
+    hourly: row.days ? Math.round(row.total / row.days / 3.5) : 0
+  }));
 }
 
 function buildStemBranchTable(rows, headerLabel) {
@@ -2113,7 +2153,7 @@ function getStatsScopeMeta(scope = state.statsScope) {
       trendEmpty: "全区間に記録がありません。",
       trendAriaLabel: "全区間の累計収支と日次収支",
       heatmapTitle: "干支×曜日ヒートマップ (全区間)",
-      heatmapNote: "縦=曜日 / 横=記録数の多い干支。色は平均収支 (緑=プラス, 赤=マイナス)。",
+      heatmapNote: "縦=曜日 / 横=記録数の多い干支。色は平均収支 (緑=プラス, 赤=マイナス) / セル内は0.1k刻み。",
       heatmapEmpty: "全区間に記録がありません。"
     };
   }
@@ -2127,7 +2167,7 @@ function getStatsScopeMeta(scope = state.statsScope) {
     trendEmpty: "直近30日に記録がありません。",
     trendAriaLabel: "直近30日の累計収支と日次収支",
     heatmapTitle: "干支×曜日ヒートマップ (直近30日)",
-    heatmapNote: "縦=曜日 / 横=直近30日で記録された干支。色は平均収支 (緑=プラス, 赤=マイナス)。",
+    heatmapNote: "縦=曜日 / 横=直近30日で記録された干支。色は平均収支 (緑=プラス, 赤=マイナス) / セル内は0.1k刻み。",
     heatmapEmpty: "直近30日に記録がありません。"
   };
 }
@@ -2305,7 +2345,8 @@ function renderKanshiHeatmap(scopeMeta = getStatsScopeMeta()) {
         if (!data) {
           return `<div class="heatmap-cell is-empty" title="${kanshi}×${weekdayLabel}曜: 記録なし"></div>`;
         }
-        const avg = Math.round(data.sum / data.count);
+        const avg = data.sum / data.count;
+        const avgRounded = Math.round(avg);
         const ratio = Math.max(-1, Math.min(1, avg / maxAbs));
         let bg;
         if (ratio > 0) {
@@ -2318,8 +2359,8 @@ function renderKanshiHeatmap(scopeMeta = getStatsScopeMeta()) {
           bg = "rgba(255,255,255,0.08)";
         }
         return `
-          <div class="heatmap-cell" style="background:${bg}" title="${kanshi}×${weekdayLabel}曜 平均${formatYen(avg)} (${data.count}件)">
-            <span class="heatmap-cell-value">${avg > 0 ? "+" : ""}${Math.round(avg / 1000)}k</span>
+          <div class="heatmap-cell" style="background:${bg}" title="${kanshi}×${weekdayLabel}曜 平均${formatYen(avgRounded)} (${data.count}件)">
+            <span class="heatmap-cell-value">${formatHeatmapValue(avg)}</span>
           </div>
         `;
       })
@@ -2330,7 +2371,7 @@ function renderKanshiHeatmap(scopeMeta = getStatsScopeMeta()) {
     `;
   }).join("");
 
-  const columnsStyle = `grid-template-columns: 36px repeat(${kanshiColumns.length}, minmax(36px, 1fr));`;
+  const columnsStyle = `grid-template-columns: 40px repeat(${kanshiColumns.length}, minmax(48px, 1fr));`;
   refs.kanshiHeatmap.innerHTML = `
     <div class="heatmap" style="${columnsStyle}">
       <div></div>
@@ -2371,6 +2412,15 @@ function buildScoreBreakdownBar(day) {
       <div class="breakdown-bar">${bars}</div>
     </section>
   `;
+}
+
+function formatHeatmapValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0k";
+  const kilo = Math.round((numeric / 1000) * 10) / 10;
+  if (Math.abs(kilo) < 0.05) return "0k";
+  const text = Number.isInteger(kilo) ? kilo.toFixed(0) : kilo.toFixed(1);
+  return `${kilo > 0 ? "+" : ""}${text}k`;
 }
 
 function buildSameKanshiComparison(kanshi, currentDateKey) {
