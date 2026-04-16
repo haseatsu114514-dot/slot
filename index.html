@@ -158,19 +158,25 @@
             <div>
               <p class="panel-kicker">Charts</p>
               <h2>統計ビュー</h2>
-              <span class="panel-note">収支推移 / 干支×曜日ヒートマップ。タップで展開</span>
+              <span class="panel-note">収支推移 / 干支×曜日ヒートマップ。直近30日と全区間を切替</span>
             </div>
             <span class="collapsible-arrow" aria-hidden="true"></span>
           </summary>
+          <div class="stats-toolbar">
+            <div class="calendar-filter stats-scope-toggle" role="group" aria-label="統計ビュー範囲">
+              <button type="button" class="filter-chip is-active" data-stats-scope="last30" aria-pressed="true">直近30日</button>
+              <button type="button" class="filter-chip" data-stats-scope="all" aria-pressed="false">全区間</button>
+            </div>
+          </div>
           <div class="charts-grid">
             <section class="chart-block">
-              <h3 class="chart-title">収支推移 (直近30日)</h3>
+              <h3 id="profitTrendTitle" class="chart-title">収支推移 (直近30日)</h3>
               <div id="profitTrendChart" class="chart-wrap"></div>
             </section>
             <section class="chart-block">
-              <h3 class="chart-title">干支×曜日ヒートマップ</h3>
+              <h3 id="kanshiHeatmapTitle" class="chart-title">干支×曜日ヒートマップ (直近30日)</h3>
               <div id="kanshiHeatmap" class="chart-wrap"></div>
-              <p class="chart-note">縦=曜日 / 横=直近に記録された干支。色は平均収支 (緑=プラス, 赤=マイナス)。</p>
+              <p id="kanshiHeatmapNote" class="chart-note">縦=曜日 / 横=直近30日で記録された干支。色は平均収支 (緑=プラス, 赤=マイナス)。</p>
             </section>
           </div>
         </details>
