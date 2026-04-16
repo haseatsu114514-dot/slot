@@ -56,7 +56,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   startMonth: "2026-04",
   monthCount: 3,
   userStar: 4,
-  badStars: [7, 6],
+  badStars: [7, 6, 9],
   syncIntervalMs: 60000,
   spreadsheetUrl: "",
   syncEndpoint: "",
@@ -983,7 +983,7 @@ export function buildDailyBoard(centerStar) {
   return board;
 }
 
-export function getKichoDirections(centerStar, userStar = 4, badStars = [7, 6]) {
+export function getKichoDirections(centerStar, userStar = 4, badStars = [7, 6, 9]) {
   const board = buildDailyBoard(centerStar);
   const starToDirection = {};
 
@@ -1003,6 +1003,7 @@ export function getKichoDirections(centerStar, userStar = 4, badStars = [7, 6]) 
     badDirections.add(DIR_OPPOSITES[starToDirection[5]]);
   }
 
+  // 四緑木星に対しては 七赤・六白・九紫 の方位も吉に含めない。
   for (const star of badStars) {
     if (starToDirection[star]) {
       badDirections.add(starToDirection[star]);

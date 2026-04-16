@@ -25,7 +25,9 @@ import {
   buildBaseRecords,
   buildCalendarMonth,
   isPerfectRecord,
-  resolveConfig
+  resolveConfig,
+  buildDailyBoard,
+  getKichoDirections
 } from "../kanshi-data.js";
 
 let passed = 0;
@@ -205,6 +207,30 @@ suite("config", () => {
     const cfg = resolveConfig({ anchorDate: "2026-01-01" });
     assert.equal(cfg.anchorDate, "2026-01-01");
     assert.equal(cfg.anchorKanshi, DEFAULT_CONFIG.anchorKanshi);
+  });
+});
+
+suite("吉方位", () => {
+  test("四緑木星では本命殺・本命的殺・五黄殺・暗剣殺・七赤/六白/九紫を除外する", () => {
+    const board = buildDailyBoard(1);
+    assert.deepEqual(board, {
+      NW: 2,
+      W: 3,
+      NE: 4,
+      S: 5,
+      N: 6,
+      SW: 7,
+      E: 8,
+      SE: 9
+    });
+
+    const result = getKichoDirections(1, 4, [7, 6, 9]);
+    assert.deepEqual(result.good, ["E", "W", "NW"]);
+    assert.deepEqual(result.goodLabels, ["東", "西", "北西"]);
+  });
+
+  test("DEFAULT_CONFIG でも九紫火星を吉方位から除外する", () => {
+    assert.deepEqual(DEFAULT_CONFIG.badStars, [7, 6, 9]);
   });
 });
 
