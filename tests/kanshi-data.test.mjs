@@ -24,10 +24,14 @@ import {
   applyEntriesToRecords,
   buildBaseRecords,
   buildCalendarMonth,
+  buildDayInfo,
   isPerfectRecord,
   resolveConfig,
   buildDailyBoard,
-  getKichoDirections
+  getKichoDirections,
+  getKyuseiForDateKey,
+  aggregateByKyusei,
+  getKyuseiPerformanceContext
 } from "../kanshi-data.js";
 
 let passed = 0;
@@ -49,6 +53,20 @@ function test(name, fn) {
 function suite(label, fn) {
   console.log(`\n${label}`);
   fn();
+}
+
+function addDays(dateKey, days) {
+  const date = parseDateKey(dateKey);
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatDateKey(date);
+}
+
+function findDateForStar(star) {
+  for (let offset = 0; offset < SEXAGENARY_CYCLE.length; offset += 1) {
+    const dateKey = addDays(DEFAULT_CONFIG.anchorDate, offset);
+    if (getKyuseiForDateKey(dateKey).number === star) return dateKey;
+  }
+  return null;
 }
 
 // --- helpers -----------------------------------------------------------
@@ -231,6 +249,40 @@ suite("吉方位", () => {
 
   test("DEFAULT_CONFIG でも九紫火星を吉方位から除外する", () => {
     assert.deepEqual(DEFAULT_CONFIG.badStars, [7, 6, 9]);
+  });
+});
+
+suite("九星補正", () => {
+  test("aggregateByKyusei は9星ぶんの集計を返す", () => {
+    const rows = aggregateByKyusei(buildBaseRecords());
+    assert.equal(rows.length, 9);
+    const row2 = rows.find((row) => row.key === 2);
+    const row5 = rows.find((row) => row.key === 5);
+    assert.ok(row2.sampleDays > 0);
+    assert.ok(row2.avgActual > row5.avgActual);
+  });
+
+  test("九星の強弱に応じて補正の正負が分かれる", () => {
+    const records = buildBaseRecords();
+    const goodDate = findDateForStar(2);
+    const badDate = findDateForStar(5);
+    const good = getKyuseiPerformanceContext(goodDate, records);
+    const bad = getKyuseiPerformanceContext(badDate, records);
+
+    assert.equal(good.kyusei.number, 2);
+    assert.equal(bad.kyusei.number, 5);
+    assert.ok(good.adjustment > 0);
+    assert.ok(bad.adjustment < 0);
+  });
+
+  test("buildDayInfo に九星補正が反映される", () => {
+    const records = buildBaseRecords();
+    const dateKey = findDateForStar(2);
+    const info = buildDayInfo(dateKey, records);
+
+    assert.ok(info.kyuseiContext);
+    assert.equal(info.record.kyuseiAdjustment, info.kyuseiContext.adjustment);
+    assert.equal(info.kyusei.number, info.kyuseiContext.kyusei.number);
   });
 });
 
