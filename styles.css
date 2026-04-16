@@ -2454,6 +2454,18 @@ html[data-theme="light"] .month-accordion-summary {
   min-width: 0;
 }
 
+.stats-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 14px;
+}
+
+@media (max-width: 640px) {
+  .stats-toolbar {
+    justify-content: flex-start;
+  }
+}
+
 .chart-title {
   margin: 0;
   font-size: 1rem;
