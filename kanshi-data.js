@@ -457,6 +457,10 @@ export function getSpecialDateContext(date) {
   };
 }
 
+function roundToHalfStep(value) {
+  return Math.round(Number(value) * 2) / 2;
+}
+
 export function isPerfectRecord(record) {
   if (!record) return false;
   return record.score >= RATING_THRESHOLDS.perfectMin;
@@ -721,6 +725,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
   const kyusei = getKyuseiForDateKey(dateKey);
+  const kyuseiContext = getKyuseiPerformanceContext(dateKey, records, config);
   const kichoDirections = getKichoDirections(kyusei.number, config.userStar, config.badStars);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
   const monthContextBase = getMonthContext(dateKey);
@@ -729,14 +734,15 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const baseSeedScore = applyQualityScoreCap(baseRecord, baseRecord.score);
   const provisionalScore = applyQualityScoreCap(
     baseRecord,
-    clamp(baseSeedScore + monthContextBase.adjustment + specialDateContext.adjustment, -6, 9)
+    clamp(baseSeedScore + monthContextBase.adjustment + specialDateContext.adjustment + kyuseiContext.adjustment, -6, 9)
   );
   const provisionalRecord = {
     ...baseRecord,
     baseScore: baseSeedScore,
     score: provisionalScore,
     monthAdjustment: monthContextBase.adjustment,
-    specialDateAdjustment: specialDateContext.adjustment
+    specialDateAdjustment: specialDateContext.adjustment,
+    kyuseiAdjustment: kyuseiContext.adjustment
   };
   const playStyle = getPlayStyle(provisionalRecord);
   const qualityCap = getQualityScoreCap(provisionalRecord);
@@ -758,6 +764,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     monthContext.expectedInfluence +
     Math.round(monthContext.adjustment * 2500) +
     Math.round(specialDateContext.adjustment * 2000) +
+    kyuseiContext.expectedInfluence +
     Math.round(playStyle.adjustment * 3000) +
     Math.round(weekdayContext.adjustment * 1500);
 
@@ -770,6 +777,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     weekday: date.getUTCDay(),
     kanshi,
     kyusei,
+    kyuseiContext,
     kichoDirections,
     record,
     rating,
@@ -815,6 +823,146 @@ function aggregateValues(values = []) {
   const daily = days > 0 ? Math.round(total / days) : 0;
   const hourly = days > 0 ? Math.round(total / days / HOURS_PER_DAY) : 0;
   return { wins, losses, rating, total, daily, hourly, days };
+}
+
+function buildKanshiDateMap(config = DEFAULT_CONFIG) {
+  const map = {};
+  for (let index = 0; index < SEXAGENARY_CYCLE.length; index += 1) {
+    const date = parseDateKey(config.anchorDate);
+    date.setUTCDate(date.getUTCDate() + index);
+    map[getKanshiForDateKey(formatDateKey(date), config)] = formatDateKey(date);
+  }
+  return map;
+}
+
+function summarizeKyuseiRows(rows = []) {
+  return rows.reduce(
+    (summary, row) => {
+      summary.sampleDays += row.sampleDays;
+      summary.weightTotal += row.weightTotal;
+      summary.totalExpected += row.avgExpected * row.weightTotal;
+      summary.totalScore += row.avgScore * row.weightTotal;
+      if (Number.isFinite(Number(row.avgActual)) && row.actualWeightTotal > 0) {
+        summary.actualWeightTotal += row.actualWeightTotal;
+        summary.totalActual += row.avgActual * row.actualWeightTotal;
+      }
+      return summary;
+    },
+    {
+      sampleDays: 0,
+      weightTotal: 0,
+      actualWeightTotal: 0,
+      totalExpected: 0,
+      totalScore: 0,
+      totalActual: 0
+    }
+  );
+}
+
+export function aggregateByKyusei(records, config = DEFAULT_CONFIG) {
+  const kanshiDateMap = buildKanshiDateMap(config);
+  const buckets = KYUSEI_NAMES.map((name, index) => ({
+    key: index + 1,
+    label: name,
+    sampleDays: 0,
+    sampleKanshiCount: 0,
+    kanshiCount: 0,
+    weightTotal: 0,
+    actualWeightTotal: 0,
+    totalExpected: 0,
+    totalActual: 0,
+    totalScore: 0
+  }));
+
+  for (const kanshi of SEXAGENARY_CYCLE) {
+    const dateKey = kanshiDateMap[kanshi];
+    if (!dateKey) continue;
+    const record = records?.[kanshi] || normalizeRecord(kanshi, {});
+    const kyusei = getKyuseiForDateKey(dateKey);
+    const row = buckets[kyusei.number - 1];
+    const days = Math.max(toNumberOrNull(record.days, 0), 0);
+    const score = toNumberOrNull(record.score, 0);
+    const expected = blendExpected(record.avg, record.sendan, days);
+    const weight = days > 0 ? days : 0;
+
+    row.kanshiCount += 1;
+
+    if (weight > 0) {
+      row.sampleKanshiCount += 1;
+      row.sampleDays += days;
+      row.weightTotal += weight;
+      row.totalExpected += expected * weight;
+      row.totalScore += score * weight;
+
+      if (record.avg !== null && record.avg !== undefined && Number.isFinite(Number(record.avg))) {
+        row.actualWeightTotal += days;
+        row.totalActual += Number(record.avg) * days;
+      }
+    }
+  }
+
+  return buckets.map((row) => ({
+    key: row.key,
+    label: row.label,
+    sampleDays: row.sampleDays,
+    sampleKanshiCount: row.sampleKanshiCount,
+    kanshiCount: row.kanshiCount,
+    weightTotal: row.weightTotal,
+    actualWeightTotal: row.actualWeightTotal,
+    avgExpected: row.weightTotal ? Math.round(row.totalExpected / row.weightTotal) : 0,
+    avgActual: row.actualWeightTotal ? Math.round(row.totalActual / row.actualWeightTotal) : null,
+    avgScore: row.weightTotal ? Number((row.totalScore / row.weightTotal).toFixed(2)) : 0
+  }));
+}
+
+export function getKyuseiPerformanceContext(dateKey, records, config = DEFAULT_CONFIG) {
+  const kyusei = getKyuseiForDateKey(dateKey);
+  const rows = aggregateByKyusei(records, config);
+  const row = rows.find((candidate) => candidate.key === kyusei.number) || rows[kyusei.number - 1];
+  const overall = summarizeKyuseiRows(rows);
+  const overallAvgExpected = overall.weightTotal ? Math.round(overall.totalExpected / overall.weightTotal) : 0;
+  const overallAvgScore = overall.weightTotal ? overall.totalScore / overall.weightTotal : 0;
+  const overallAvgActual = overall.actualWeightTotal ? Math.round(overall.totalActual / overall.actualWeightTotal) : overallAvgExpected;
+  const currentValue = row.avgActual ?? row.avgExpected;
+  const overallValue = overallAvgActual ?? overallAvgExpected;
+  const sampleWeight = row.sampleDays > 0 ? clamp(row.sampleDays / 15, 0.35, 1) : 0;
+  const valueDelta = currentValue - overallValue;
+  const scoreDelta = row.avgScore - overallAvgScore;
+  const rawAdjustment =
+    ((clamp(valueDelta / 15000, -1.4, 1.4) * 0.65) + (clamp(scoreDelta / 2.5, -1.1, 1.1) * 0.35)) * sampleWeight;
+  const adjustment = row.sampleDays > 0 ? clamp(roundToHalfStep(rawAdjustment), -1.5, 1.5) : 0;
+  const expectedInfluence = Math.round(clamp(valueDelta * sampleWeight * 0.25, -5000, 5000));
+  const trend =
+    adjustment >= 1 ? "かなり追い風"
+    : adjustment >= 0.5 ? "やや追い風"
+    : adjustment <= -1 ? "かなり逆風"
+    : adjustment <= -0.5 ? "やや逆風"
+    : "中立";
+  const tone =
+    adjustment > 0 ? "good"
+    : adjustment < 0 ? "caution"
+    : "neutral";
+  const note = row.sampleDays > 0
+    ? `${kyusei.name}は過去${row.sampleDays}日で平均 ${formatYen(currentValue)}。全体平均 ${formatYen(overallValue)} と比べて ${valueDelta >= 0 ? "強め" : "弱め"}です。`
+    : `${kyusei.name}の実績サンプルがまだ少ないため、九星補正は中立です。`;
+
+  return {
+    kyusei,
+    adjustment,
+    expectedInfluence,
+    label: trend,
+    shortLabel: adjustment > 0 ? "九星追い風" : adjustment < 0 ? "九星逆風" : "九星中立",
+    tone,
+    note,
+    sampleDays: row.sampleDays,
+    sampleKanshiCount: row.sampleKanshiCount,
+    avgActual: row.avgActual,
+    avgExpected: row.avgExpected,
+    avgScore: row.avgScore,
+    overallAvgActual,
+    overallAvgExpected,
+    overallAvgScore: Number(overallAvgScore.toFixed(2))
+  };
 }
 
 export function aggregateByStem(entriesMap) {
