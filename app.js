@@ -23,7 +23,7 @@ import {
   aggregateByRatingTier,
   SEED_MONTHLY_ENTRIES,
   KYUSEI_NAMES
-} from "./kanshi-data.js?v=20260416c";
+} from "./kanshi-data.js?v=20260416d";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
