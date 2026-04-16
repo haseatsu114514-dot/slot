@@ -55,6 +55,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   anchorKanshi: "辛亥",
   startMonth: "2026-04",
   monthCount: 3,
+  userStar: 4,
+  badStars: [7, 6],
   syncIntervalMs: 60000,
   spreadsheetUrl: "",
   syncEndpoint: "",
@@ -719,6 +721,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
   const kyusei = getKyuseiForDateKey(dateKey);
+  const kichoDirections = getKichoDirections(kyusei.number, config.userStar, config.badStars);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
   const monthContextBase = getMonthContext(dateKey);
   const specialDateContext = getSpecialDateContext(date);
@@ -767,6 +770,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     weekday: date.getUTCDay(),
     kanshi,
     kyusei,
+    kichoDirections,
     record,
     rating,
     playStyle,
@@ -945,6 +949,68 @@ export function getKyuseiForDateKey(dateKey) {
   return {
     number: starIndex + 1,
     name: KYUSEI_NAMES[starIndex]
+  };
+}
+
+/* ── 吉方位（日盤 順飛） ── */
+
+const FLIGHT_PATH = Object.freeze(["NW", "W", "NE", "S", "N", "SW", "E", "SE"]);
+
+const DIR_OPPOSITES = Object.freeze({
+  N: "S", S: "N", E: "W", W: "E",
+  NE: "SW", SW: "NE", NW: "SE", SE: "NW"
+});
+
+export const DIR_LABELS = Object.freeze({
+  N: "北", S: "南", E: "東", W: "西",
+  NE: "北東", NW: "北西", SE: "南東", SW: "南西"
+});
+
+const ALL_DIRECTIONS = Object.freeze(["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+
+export function buildDailyBoard(centerStar) {
+  const board = {};
+  FLIGHT_PATH.forEach((dir, i) => {
+    board[dir] = (centerStar + i) % 9 + 1;
+  });
+  return board;
+}
+
+export function getKichoDirections(centerStar, userStar = 4, badStars = [7, 6]) {
+  const board = buildDailyBoard(centerStar);
+
+  const starToDir = {};
+  for (const dir of ALL_DIRECTIONS) {
+    starToDir[board[dir]] = dir;
+  }
+
+  const badDirs = new Set();
+
+  // 本命殺・本命的殺（自分の星の位置とその真反対）
+  if (starToDir[userStar]) {
+    badDirs.add(starToDir[userStar]);
+    badDirs.add(DIR_OPPOSITES[starToDir[userStar]]);
+  }
+
+  // 五黄殺・暗剣殺（五黄の位置とその真反対）
+  if (starToDir[5]) {
+    badDirs.add(starToDir[5]);
+    badDirs.add(DIR_OPPOSITES[starToDir[5]]);
+  }
+
+  // 追加凶星（四緑木星の場合: 七赤・六白 = 金剋木）
+  for (const star of badStars) {
+    if (starToDir[star]) {
+      badDirs.add(starToDir[star]);
+    }
+  }
+
+  const good = ALL_DIRECTIONS.filter((d) => !badDirs.has(d));
+
+  return {
+    good,
+    goodLabels: good.map((d) => DIR_LABELS[d]),
+    board
   };
 }
 

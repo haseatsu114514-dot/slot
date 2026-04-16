@@ -22,8 +22,11 @@ import {
   aggregateByElement,
   aggregateByRatingTier,
   SEED_MONTHLY_ENTRIES,
-  getKyuseiForDateKey
-} from "./kanshi-data.js?v=20260416a";
+  getKyuseiForDateKey,
+  getKichoDirections,
+  DIR_LABELS,
+  KYUSEI_NAMES
+} from "./kanshi-data.js?v=20260416b";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
@@ -721,6 +724,7 @@ function renderCalendar(months) {
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-kyusei">${day.kyusei.name}</span>
+              <span class="day-kicho">${day.kichoDirections.goodLabels.length ? day.kichoDirections.goodLabels.join("・") : "なし"}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
               <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
@@ -836,6 +840,11 @@ function renderSelectedDay() {
           <span>九星</span>
           <strong>${day.kyusei.name}</strong>
           <small>日家九星</small>
+        </div>
+        <div class="selected-stat selected-stat-kicho">
+          <span>吉方位</span>
+          <strong>${day.kichoDirections.goodLabels.length ? day.kichoDirections.goodLabels.join("・") : "なし"}</strong>
+          <small>${buildBoardSummary(day.kichoDirections.board, day.kyusei.number)}</small>
         </div>
         <div class="selected-stat">
           <span>質感ステータス</span>
@@ -1226,6 +1235,17 @@ function createEntryId() {
     return window.crypto.randomUUID();
   }
   return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildBoardSummary(board, centerStar) {
+  const dirs = [
+    ["SE", "S", "SW"],
+    ["E", "中", "W"],
+    ["NE", "N", "NW"]
+  ];
+  return dirs.map((row) =>
+    row.map((d) => d === "中" ? KYUSEI_NAMES[centerStar - 1] : KYUSEI_NAMES[board[d] - 1]).join(" ")
+  ).join(" / ");
 }
 
 function escapeHtml(value) {
