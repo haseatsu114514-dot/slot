@@ -718,6 +718,7 @@ export function formatYen(value) {
 export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
+  const kyusei = getKyuseiForDateKey(dateKey);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
   const monthContextBase = getMonthContext(dateKey);
   const specialDateContext = getSpecialDateContext(date);
@@ -765,6 +766,7 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     day: date.getUTCDate(),
     weekday: date.getUTCDay(),
     kanshi,
+    kyusei,
     record,
     rating,
     playStyle,
@@ -901,6 +903,52 @@ export function aggregateByRatingTier(records) {
     };
   });
 }
+
+/* ── 九星気学 (日家九星) ── */
+
+export const KYUSEI_NAMES = Object.freeze([
+  "一白", "二黒", "三碧", "四緑", "五黄", "六白", "七赤", "八白", "九紫"
+]);
+
+// 陽遁/陰遁 切り替え日テーブル（参照: magicwands.jp 暦カレンダー）
+// direction: "asc" = 陽遁（昇順 1→9）, "desc" = 陰遁（降順 9→1）
+// star: 切り替え日の九星番号
+const KYUSEI_SWITCH_POINTS = Object.freeze([
+  { date: "2025-06-24", direction: "desc", star: 9 },
+  { date: "2025-12-21", direction: "asc",  star: 1 },
+  { date: "2026-06-19", direction: "desc", star: 9 },
+  { date: "2026-12-16", direction: "asc",  star: 1 },
+  { date: "2027-06-14", direction: "desc", star: 9 },
+  { date: "2027-12-11", direction: "asc",  star: 1 },
+]);
+
+export function getKyuseiForDateKey(dateKey) {
+  let switchPoint = KYUSEI_SWITCH_POINTS[0];
+  for (const sp of KYUSEI_SWITCH_POINTS) {
+    if (dateKey >= sp.date) switchPoint = sp;
+    else break;
+  }
+
+  const targetDate = parseDateKey(dateKey);
+  const switchDate = parseDateKey(switchPoint.date);
+  const dayOffset = Math.round(
+    (targetDate.getTime() - switchDate.getTime()) / 86400000
+  );
+
+  let starIndex;
+  if (switchPoint.direction === "asc") {
+    starIndex = mod(switchPoint.star - 1 + dayOffset, 9);
+  } else {
+    starIndex = mod(switchPoint.star - 1 - dayOffset, 9);
+  }
+
+  return {
+    number: starIndex + 1,
+    name: KYUSEI_NAMES[starIndex]
+  };
+}
+
+/* ── カレンダー月ビルド ── */
 
 export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG) {
   const daysInMonth = getDaysInMonth(year, month);

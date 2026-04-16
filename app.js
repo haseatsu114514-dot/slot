@@ -21,8 +21,9 @@ import {
   aggregateByBranch,
   aggregateByElement,
   aggregateByRatingTier,
-  SEED_MONTHLY_ENTRIES
-} from "./kanshi-data.js?v=20260415a";
+  SEED_MONTHLY_ENTRIES,
+  getKyuseiForDateKey
+} from "./kanshi-data.js?v=20260416a";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
@@ -640,7 +641,7 @@ function renderUpcoming(upcomingDays) {
         <strong class="upcoming-kanshi">${day.kanshi}</strong>
         <span class="upcoming-copy">${day.rating.label} ${day.rating.text} / ${formatScoreValue(day.record.score)}点</span>
         <span class="upcoming-meta">
-          ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)} (${day.record.days}日平均)
+          ${day.kyusei.name} / ${day.record.ts || "通変星未設定"} / ${buildMonthMeta(day.monthContext)} / 実績平均 ${formatYen(day.record.avg)} (${day.record.days}日平均)
         </span>
         <span class="mini-tag-row">
           ${day.specialDateContext.statuses.length ? buildSpecialDateChip(day.specialDateContext) : ""}
@@ -719,6 +720,7 @@ function renderCalendar(months) {
               <span class="day-number">${day.day}</span>
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
+              <span class="day-kyusei">${day.kyusei.name}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
               <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
@@ -829,6 +831,11 @@ function renderSelectedDay() {
           <span>月干支</span>
           <strong>${day.monthContext.kanshi || "-"}</strong>
           <small>${day.monthContext.seasonal?.label || day.monthContext.statuses.join(" / ") || "補正なし"} ${getScoreText(day.monthContext.adjustment)}</small>
+        </div>
+        <div class="selected-stat">
+          <span>九星</span>
+          <strong>${day.kyusei.name}</strong>
+          <small>日家九星</small>
         </div>
         <div class="selected-stat">
           <span>質感ステータス</span>
