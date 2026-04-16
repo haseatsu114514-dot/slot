@@ -1,0 +1,26 @@
+{
+  "name": "打つべきかカレンダー",
+  "short_name": "打つべきか",
+  "description": "干支と過去実績から今日打つべきかを判断するカレンダー。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1014",
+  "theme_color": "#0f1014",
+  "orientation": "portrait",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%230f1014'/><text x='50%25' y='54%25' font-size='108' text-anchor='middle' dominant-baseline='middle' font-family='serif' fill='%23ddbb72'>占</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%230f1014'/><text x='50%25' y='54%25' font-size='288' text-anchor='middle' dominant-baseline='middle' font-family='serif' fill='%23ddbb72'>占</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

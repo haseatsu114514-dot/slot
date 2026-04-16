@@ -7,7 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260416b">
+    <link rel="stylesheet" href="./styles.css?v=20260416c">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <meta name="theme-color" content="#0f1014">
   </head>
   <body>
     <div class="page-shell">
@@ -31,12 +33,13 @@
             <strong id="syncBadgeText">同期未設定</strong>
           </div>
           <button id="syncNowButton" class="hero-sync-button" type="button">シート最新反映</button>
+          <button id="themeToggleButton" class="hero-theme-button" type="button" aria-label="テーマ切替" title="テーマ切替">🌓</button>
         </div>
       </header>
 
       <main class="page-content">
         <!-- モバイル専用: カレンダーを見ながら選択日の概要を常に見られるスティッキーバー -->
-        <div id="mobileStickyDetail" class="mobile-sticky-detail" hidden></div>
+        <div id="mobileStickyDetail" class="mobile-sticky-detail" role="status" aria-live="polite" hidden></div>
 
         <section class="overview-grid">
           <article class="panel panel-stat">
@@ -45,8 +48,10 @@
                 <p class="panel-kicker">3 Months</p>
                 <h2>90日サマリー</h2>
               </div>
+              <button id="exportReportButton" type="button" class="panel-link panel-link-button">月次レポートPNG</button>
             </div>
             <div id="summaryCards" class="summary-cards"></div>
+            <div id="performancePanel" class="performance-panel"></div>
           </article>
 
           <article class="panel panel-upcoming">
@@ -75,15 +80,28 @@
                 <p class="panel-kicker">Calendar</p>
                 <h2>3か月カレンダー</h2>
               </div>
-              <div class="legend">
-                <span class="legend-item is-perfect">★</span>
-                <span class="legend-item is-special">◎</span>
-                <span class="legend-item is-go">○</span>
-                <span class="legend-item is-hold">△</span>
-                <span class="legend-item is-avoid">×</span>
+              <div class="legend" role="list" aria-label="評価凡例">
+                <span class="legend-item is-perfect" role="listitem" title="★ 完璧: スコア 9 以上 / 最優先で打つべき日">★</span>
+                <span class="legend-item is-special" role="listitem" title="◎ 絶好: スコア 7〜8 / 積極的に狙う">◎</span>
+                <span class="legend-item is-go" role="listitem" title="○ 行く: スコア 5〜6 / 打つのを推奨">○</span>
+                <span class="legend-item is-hold" role="listitem" title="△ どちらでも: スコア 3〜4 / 体調と相談">△</span>
+                <span class="legend-item is-avoid" role="listitem" title="× 見送り: スコア 2 以下 / 打たない方が得">×</span>
               </div>
             </div>
-            <div id="calendarGrid" class="calendar-grid"></div>
+            <div class="calendar-toolbar">
+              <div class="calendar-filter" role="group" aria-label="カレンダー絞り込み">
+                <button type="button" class="filter-chip is-active" data-filter="all">全て</button>
+                <button type="button" class="filter-chip" data-filter="go">○以上</button>
+                <button type="button" class="filter-chip" data-filter="top">★◎のみ</button>
+                <button type="button" class="filter-chip" data-filter="recorded">実績あり</button>
+              </div>
+              <label class="calendar-jump">
+                <span class="calendar-jump-label">日付へ</span>
+                <input id="calendarJumpInput" type="date" aria-label="指定日にジャンプ">
+              </label>
+              <button id="jumpTodayButton" class="today-jump-button" type="button">今日へ移動</button>
+            </div>
+            <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="3か月カレンダー"></div>
             <div id="dayHoverCard" class="day-hover-card" hidden></div>
           </article>
 
@@ -129,11 +147,65 @@
               <button id="retrySyncButton" class="secondary-button" type="button">Sheets同期を再試行</button>
             </div>
 
-            <p id="formStatus" class="form-status">
+            <p id="formStatus" class="form-status" role="status" aria-live="polite">
               Google Sheets の Web アプリ URL を設定すると、保存時にシートへ追記され、再読み込みや自動同期でも反映されます。
             </p>
           </form>
         </section>
+
+        <details class="panel panel-charts collapsible-panel" id="chartsPanel">
+          <summary class="collapsible-summary">
+            <div>
+              <p class="panel-kicker">Charts</p>
+              <h2>統計ビュー</h2>
+              <span class="panel-note">収支推移 / 干支×曜日ヒートマップ。タップで展開</span>
+            </div>
+            <span class="collapsible-arrow" aria-hidden="true"></span>
+          </summary>
+          <div class="charts-grid">
+            <section class="chart-block">
+              <h3 class="chart-title">収支推移 (直近30日)</h3>
+              <div id="profitTrendChart" class="chart-wrap"></div>
+            </section>
+            <section class="chart-block">
+              <h3 class="chart-title">干支×曜日ヒートマップ</h3>
+              <div id="kanshiHeatmap" class="chart-wrap"></div>
+              <p class="chart-note">縦=曜日 / 横=直近に記録された干支。色は平均収支 (緑=プラス, 赤=マイナス)。</p>
+            </section>
+          </div>
+        </details>
+
+        <details class="panel panel-log collapsible-panel" id="recentEntriesPanel">
+          <summary class="collapsible-summary">
+            <div>
+              <p class="panel-kicker">Log</p>
+              <h2>過去の記録</h2>
+              <span class="panel-note">直近の実績入力を編集・削除できます。タップで展開</span>
+            </div>
+            <span class="collapsible-arrow" aria-hidden="true"></span>
+          </summary>
+          <div class="log-toolbar">
+            <label class="log-tool-select">
+              <span>範囲</span>
+              <select id="exportScopeSelect" aria-label="エクスポート範囲">
+                <option value="all">全て</option>
+                <option value="month">今月のみ</option>
+                <option value="last30">直近30日</option>
+                <option value="year">今年のみ</option>
+                <option value="wins">勝ち (+) のみ</option>
+                <option value="losses">負け (-) のみ</option>
+              </select>
+            </label>
+            <button id="exportJsonButton" type="button" class="log-tool-button">JSONエクスポート</button>
+            <button id="exportCsvButton" type="button" class="log-tool-button">CSVエクスポート</button>
+            <label class="log-tool-button log-tool-button-label">
+              <span>JSONインポート</span>
+              <input id="importJsonInput" type="file" accept="application/json,.json" hidden>
+            </label>
+            <span id="logToolStatus" class="log-tool-status" role="status"></span>
+          </div>
+          <div id="recentEntries" class="recent-entries-list"></div>
+        </details>
 
         <details class="panel panel-aggregates collapsible-panel">
           <summary class="collapsible-summary">
@@ -175,6 +247,34 @@
       </main>
     </div>
 
+    <button id="formFab" class="form-fab" type="button" aria-label="成績入力へ移動">
+      <span class="form-fab-icon" aria-hidden="true">＋</span>
+      <span class="form-fab-text">入力</span>
+    </button>
+
+    <div id="quickInputPopover" class="quick-input-popover" role="dialog" aria-modal="false" aria-label="クイック収支入力" hidden>
+      <div class="quick-input-inner">
+        <header class="quick-input-head">
+          <div>
+            <span class="quick-input-date"></span>
+            <strong class="quick-input-kanshi"></strong>
+          </div>
+          <button type="button" class="quick-input-close" aria-label="閉じる">×</button>
+        </header>
+        <form class="quick-input-form">
+          <label class="quick-input-field">
+            <span>収支</span>
+            <input type="number" step="100" name="profit" inputmode="numeric" placeholder="例: 18500 / -32000" required>
+          </label>
+          <label class="quick-input-field quick-input-memo-field">
+            <span>メモ</span>
+            <input type="text" name="memo" placeholder="任意">
+          </label>
+          <button type="submit" class="quick-input-submit">保存</button>
+        </form>
+      </div>
+    </div>
+
     <script>
       window.SLOT_APP_CONFIG = {
         anchorDate: "2026-04-07",
@@ -188,6 +288,6 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260416b"></script>
+    <script type="module" src="./app.js?v=20260416c"></script>
   </body>
 </html>

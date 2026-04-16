@@ -908,36 +908,31 @@ export function aggregateByRatingTier(records) {
   });
 }
 
-/* ── 九星気学 (日家九星) ── */
+/* -- 九星気学 (日家九星) -- */
 
 export const KYUSEI_NAMES = Object.freeze([
   "一白", "二黒", "三碧", "四緑", "五黄", "六白", "七赤", "八白", "九紫"
 ]);
 
-// 陽遁/陰遁 切り替え日テーブル（参照: magicwands.jp 暦カレンダー）
-// direction: "asc" = 陽遁（昇順 1→9）, "desc" = 陰遁（降順 9→1）
-// star: 切り替え日の九星番号
 const KYUSEI_SWITCH_POINTS = Object.freeze([
   { date: "2025-06-24", direction: "desc", star: 9 },
-  { date: "2025-12-21", direction: "asc",  star: 1 },
+  { date: "2025-12-21", direction: "asc", star: 1 },
   { date: "2026-06-19", direction: "desc", star: 9 },
-  { date: "2026-12-16", direction: "asc",  star: 1 },
+  { date: "2026-12-16", direction: "asc", star: 1 },
   { date: "2027-06-14", direction: "desc", star: 9 },
-  { date: "2027-12-11", direction: "asc",  star: 1 },
+  { date: "2027-12-11", direction: "asc", star: 1 }
 ]);
 
 export function getKyuseiForDateKey(dateKey) {
   let switchPoint = KYUSEI_SWITCH_POINTS[0];
-  for (const sp of KYUSEI_SWITCH_POINTS) {
-    if (dateKey >= sp.date) switchPoint = sp;
+  for (const point of KYUSEI_SWITCH_POINTS) {
+    if (dateKey >= point.date) switchPoint = point;
     else break;
   }
 
   const targetDate = parseDateKey(dateKey);
   const switchDate = parseDateKey(switchPoint.date);
-  const dayOffset = Math.round(
-    (targetDate.getTime() - switchDate.getTime()) / 86400000
-  );
+  const dayOffset = Math.round((targetDate.getTime() - switchDate.getTime()) / 86400000);
 
   let starIndex;
   if (switchPoint.direction === "asc") {
@@ -952,69 +947,76 @@ export function getKyuseiForDateKey(dateKey) {
   };
 }
 
-/* ── 吉方位（日盤 順飛） ── */
+/* -- 吉方位 (日盤 順飛) -- */
 
 const FLIGHT_PATH = Object.freeze(["NW", "W", "NE", "S", "N", "SW", "E", "SE"]);
 
 const DIR_OPPOSITES = Object.freeze({
-  N: "S", S: "N", E: "W", W: "E",
-  NE: "SW", SW: "NE", NW: "SE", SE: "NW"
+  N: "S",
+  S: "N",
+  E: "W",
+  W: "E",
+  NE: "SW",
+  SW: "NE",
+  NW: "SE",
+  SE: "NW"
 });
 
 export const DIR_LABELS = Object.freeze({
-  N: "北", S: "南", E: "東", W: "西",
-  NE: "北東", NW: "北西", SE: "南東", SW: "南西"
+  N: "北",
+  S: "南",
+  E: "東",
+  W: "西",
+  NE: "北東",
+  NW: "北西",
+  SE: "南東",
+  SW: "南西"
 });
 
 const ALL_DIRECTIONS = Object.freeze(["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
 
 export function buildDailyBoard(centerStar) {
   const board = {};
-  FLIGHT_PATH.forEach((dir, i) => {
-    board[dir] = (centerStar + i) % 9 + 1;
+  FLIGHT_PATH.forEach((direction, index) => {
+    board[direction] = (centerStar + index) % 9 + 1;
   });
   return board;
 }
 
 export function getKichoDirections(centerStar, userStar = 4, badStars = [7, 6]) {
   const board = buildDailyBoard(centerStar);
+  const starToDirection = {};
 
-  const starToDir = {};
-  for (const dir of ALL_DIRECTIONS) {
-    starToDir[board[dir]] = dir;
+  for (const direction of ALL_DIRECTIONS) {
+    starToDirection[board[direction]] = direction;
   }
 
-  const badDirs = new Set();
+  const badDirections = new Set();
 
-  // 本命殺・本命的殺（自分の星の位置とその真反対）
-  if (starToDir[userStar]) {
-    badDirs.add(starToDir[userStar]);
-    badDirs.add(DIR_OPPOSITES[starToDir[userStar]]);
+  if (starToDirection[userStar]) {
+    badDirections.add(starToDirection[userStar]);
+    badDirections.add(DIR_OPPOSITES[starToDirection[userStar]]);
   }
 
-  // 五黄殺・暗剣殺（五黄の位置とその真反対）
-  if (starToDir[5]) {
-    badDirs.add(starToDir[5]);
-    badDirs.add(DIR_OPPOSITES[starToDir[5]]);
+  if (starToDirection[5]) {
+    badDirections.add(starToDirection[5]);
+    badDirections.add(DIR_OPPOSITES[starToDirection[5]]);
   }
 
-  // 追加凶星（四緑木星の場合: 七赤・六白 = 金剋木）
   for (const star of badStars) {
-    if (starToDir[star]) {
-      badDirs.add(starToDir[star]);
+    if (starToDirection[star]) {
+      badDirections.add(starToDirection[star]);
     }
   }
 
-  const good = ALL_DIRECTIONS.filter((d) => !badDirs.has(d));
+  const good = ALL_DIRECTIONS.filter((direction) => !badDirections.has(direction));
 
   return {
     good,
-    goodLabels: good.map((d) => DIR_LABELS[d]),
+    goodLabels: good.map((direction) => DIR_LABELS[direction]),
     board
   };
 }
-
-/* ── カレンダー月ビルド ── */
 
 export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG) {
   const daysInMonth = getDaysInMonth(year, month);
