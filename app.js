@@ -1657,7 +1657,7 @@ function renderCalendar(months) {
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-kyusei">${day.kyusei?.name || ""}</span>
-              <span class="day-kicho">吉方位 ${kichoText}</span>
+              <span class="day-kicho">${kichoText}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
               <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
