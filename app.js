@@ -1635,7 +1635,7 @@ function renderCalendar(months) {
           const entryClass = hasEntry ? "has-entry" : "";
           const dimClass = matchesCalendarFilter(day, recordedDates) ? "" : "is-dimmed";
           const kichoText = day.kichoDirections?.goodLabels?.length ? day.kichoDirections.goodLabels.join("・") : "なし";
-          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} / 吉方位 ${kichoText}`);
+          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} ${getScoreText(day.kyuseiContext?.adjustment || 0)} / 吉方位 ${kichoText}`);
           const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
           const markerHtml = day.specialDateContext.statuses.length
             ? `<span class="day-marker-corner is-caution" aria-hidden="true">!</span>`
@@ -1718,6 +1718,9 @@ function renderSelectedDay() {
     const specialDateAdjustmentLabel = day.specialDateContext.adjustment === 0
       ? "日付補正なし"
       : `日付補正 ${getScoreText(day.specialDateContext.adjustment)}`;
+    const kyuseiAdjustmentLabel = day.kyuseiContext?.adjustment === 0
+      ? "九星補正なし"
+      : `九星補正 ${getScoreText(day.kyuseiContext?.adjustment || 0)}`;
     const playStyleAdjustmentLabel = day.playStyle.adjustment === 0
       ? "質感補正なし"
       : `質感補正 ${getScoreText(day.playStyle.adjustment)}`;
@@ -1774,7 +1777,7 @@ function renderSelectedDay() {
         <div class="selected-stat">
           <span>現在スコア</span>
           <strong>${formatScoreValue(day.record.score)}</strong>
-          <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
+          <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${kyuseiAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
         </div>
         <div class="selected-stat">
           <span>通変星</span>
@@ -1789,7 +1792,7 @@ function renderSelectedDay() {
         <div class="selected-stat">
           <span>九星</span>
           <strong>${day.kyusei?.name || "-"}</strong>
-          <small>日家九星</small>
+          <small>${day.kyuseiContext?.label || "日家九星"} / ${day.kyuseiContext?.sampleDays || 0}日サンプル / ${getScoreText(day.kyuseiContext?.adjustment || 0)}</small>
         </div>
         <div class="selected-stat selected-stat-kicho">
           <span>吉方位</span>
@@ -1800,6 +1803,11 @@ function renderSelectedDay() {
           <span>質感ステータス</span>
           <strong>${day.playStyle.label}</strong>
           <small>${day.playStyle.note}</small>
+        </div>
+        <div class="selected-stat">
+          <span>九星傾向</span>
+          <strong>${day.kyuseiContext?.shortLabel || "九星中立"}</strong>
+          <small>${day.kyuseiContext?.note || "九星補正なし"}</small>
         </div>
         <div class="selected-stat">
           <span>曜日補助</span>
@@ -2238,6 +2246,7 @@ function buildScoreBreakdownBar(day) {
     { label: "日基準", value: Number(day.record.baseScore) || 0, cls: "seg-base" },
     { label: "月", value: Number(day.monthContext.adjustment) || 0, cls: "seg-month" },
     { label: "日付", value: Number(day.specialDateContext.adjustment) || 0, cls: "seg-special" },
+    { label: "九星", value: Number(day.kyuseiContext?.adjustment) || 0, cls: "seg-kyusei" },
     { label: "質感", value: Number(day.playStyle.adjustment) || 0, cls: "seg-play" },
     { label: "曜日", value: Number(day.weekdayContext.adjustment) || 0, cls: "seg-weekday" }
   ];
@@ -2627,6 +2636,7 @@ function buildScoreBreakdown(day) {
     `日基準 ${formatScoreValue(day.record.baseScore)}`,
     `月 ${getScoreText(day.monthContext.adjustment)}`,
     `日付 ${getScoreText(day.specialDateContext.adjustment)}`,
+    `九星 ${getScoreText(day.kyuseiContext?.adjustment || 0)}`,
     `質感 ${getScoreText(day.playStyle.adjustment)}`
   ].join(" / ");
 }

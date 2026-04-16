@@ -2542,6 +2542,7 @@ html[data-theme="light"] .month-accordion-summary {
 .breakdown-seg.seg-base { background: rgba(221, 187, 114, 0.45); color: #2a2215; }
 .breakdown-seg.seg-month { background: rgba(143, 210, 109, 0.45); color: #0f1f0e; }
 .breakdown-seg.seg-special { background: rgba(231, 185, 76, 0.45); color: #261d08; }
+.breakdown-seg.seg-kyusei { background: rgba(120, 196, 224, 0.48); color: #0e2230; }
 .breakdown-seg.seg-play { background: rgba(123, 179, 228, 0.45); color: #0c1c2a; }
 .breakdown-seg.seg-weekday { background: rgba(206, 175, 255, 0.45); color: #221833; }
 .breakdown-seg.is-minus { filter: saturate(0.7) brightness(0.82); }
