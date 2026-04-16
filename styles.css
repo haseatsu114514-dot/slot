@@ -425,14 +425,8 @@ a {
 
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
   gap: 8px;
-}
-
-@media (min-width: 520px) {
-  .summary-cards {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
 }
 
 .summary-card {
@@ -465,6 +459,14 @@ a {
   background: rgba(154, 163, 178, 0.14);
 }
 
+.summary-card.is-kyusei-good {
+  background: rgba(120, 196, 224, 0.14);
+}
+
+.summary-card.is-kyusei-caution {
+  background: rgba(214, 140, 92, 0.14);
+}
+
 .summary-label,
 .summary-note {
   color: var(--muted);
@@ -474,6 +476,7 @@ a {
 .summary-value {
   font-size: 1.55rem;
   font-weight: 900;
+  line-height: 1;
 }
 
 @media (min-width: 720px) {
@@ -1329,7 +1332,7 @@ html[data-theme="light"] .month-accordion-summary {
 }
 
 .day-card {
-  min-height: 96px;
+  min-height: 94px;
   min-width: 0;
   padding: 6px 3px 6px;
   border-radius: 12px;
@@ -1339,7 +1342,7 @@ html[data-theme="light"] .month-accordion-summary {
   display: grid;
   justify-items: center;
   align-content: start;
-  gap: 3px;
+  gap: 2px;
   cursor: pointer;
   transition: transform 0.16s ease, border-color 0.16s ease;
   position: relative;
@@ -1489,24 +1492,24 @@ html[data-theme="light"] .month-accordion-summary {
 .day-kanshi {
   font-weight: 800;
   font-size: 0.72rem;
+  line-height: 1.1;
 }
 
 .day-kyusei {
   font-size: 0.56rem;
   color: var(--gold-soft);
   opacity: 0.85;
-}
-
-.day-kicho {
-  font-size: 0.48rem;
-  color: var(--special);
-  opacity: 0.9;
-  line-height: 1.2;
+  line-height: 1.1;
+  text-align: center;
 }
 
 .day-ts {
   font-size: 0.54rem;
   color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .day-style {
@@ -1515,6 +1518,10 @@ html[data-theme="light"] .month-accordion-summary {
   padding: 2px 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .day-opportunity {
@@ -1522,13 +1529,16 @@ html[data-theme="light"] .month-accordion-summary {
   font-size: 0.5rem;
   padding: 2px 6px;
   border-radius: 999px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (min-width: 720px) {
   .day-rating { font-size: 1.22rem; }
   .day-kanshi { font-size: 0.8rem; }
   .day-kyusei { font-size: 0.6rem; }
-  .day-kicho { font-size: 0.52rem; }
   .day-ts { font-size: 0.58rem; }
   .day-score-pill {
     padding: 3px 7px;
@@ -1545,6 +1555,37 @@ html[data-theme="light"] .month-accordion-summary {
   .day-style, .day-opportunity {
     font-size: 0.54rem;
     padding: 3px 7px;
+  }
+}
+
+@media (max-width: 420px) {
+  .day-card {
+    min-height: 88px;
+    padding: 5px 2px 6px;
+  }
+
+  .day-rating {
+    font-size: 0.96rem;
+  }
+
+  .day-kanshi {
+    font-size: 0.68rem;
+  }
+
+  .day-kyusei {
+    font-size: 0.52rem;
+  }
+
+  .day-ts {
+    font-size: 0.5rem;
+  }
+
+  .day-score-pill,
+  .day-style,
+  .day-opportunity {
+    font-size: 0.46rem;
+    padding-left: 5px;
+    padding-right: 5px;
   }
 }
 
@@ -1879,6 +1920,13 @@ html[data-theme="light"] .month-accordion-summary {
 .selected-stat strong {
   font-size: 1.05rem;
   word-break: keep-all;
+}
+
+.selected-stat-kicho strong,
+.selected-stat-kicho small {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .tag-row {
@@ -2236,6 +2284,7 @@ html[data-theme="light"] .month-accordion-summary {
   display: flex;
   gap: 10px;
   justify-content: space-between;
+  flex-wrap: wrap;
   font-size: 0.8rem;
   color: var(--muted);
 }

@@ -1131,7 +1131,7 @@ function getUpcomingDays(months) {
 /**
  * Bucket counts for the 90-day summary cards.
  * @param {Array<{dayRows: Array<{record: object}>}>} months
- * @returns {{total:number, perfect:number, special:number, go:number, hold:number, avoid:number}}
+ * @returns {{total:number, perfect:number, special:number, go:number, hold:number, avoid:number, kyuseiGood:number, kyuseiBad:number}}
  */
 function getSummary(months) {
   const allDays = months.flatMap((month) => month.dayRows);
@@ -1141,7 +1141,9 @@ function getSummary(months) {
     special: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(day.record)).length,
     go: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin && day.record.score < RATING_THRESHOLDS.specialMin).length,
     hold: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.holdMin && day.record.score < RATING_THRESHOLDS.goMin).length,
-    avoid: allDays.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length
+    avoid: allDays.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length,
+    kyuseiGood: allDays.filter((day) => Number(day.kyuseiContext?.adjustment) > 0).length,
+    kyuseiBad: allDays.filter((day) => Number(day.kyuseiContext?.adjustment) < 0).length
   };
 }
 
@@ -1542,7 +1544,9 @@ function renderSummary(summary) {
     buildSummaryCard("◎ 絶好", summary.special, "スコア7-8", "is-special"),
     buildSummaryCard("○ 行くべき", summary.go, "スコア5-6", "is-go"),
     buildSummaryCard("△ どちらでも", summary.hold, "スコア3-4", "is-hold"),
-    buildSummaryCard("× 見送り", summary.avoid, "スコア2以下", "is-avoid")
+    buildSummaryCard("× 見送り", summary.avoid, "スコア2以下", "is-avoid"),
+    buildSummaryCard("九星追い風", summary.kyuseiGood, "+補正の日", "is-kyusei-good"),
+    buildSummaryCard("九星注意", summary.kyuseiBad, "-補正の日", "is-kyusei-caution")
   ].join("");
 }
 
@@ -1634,8 +1638,7 @@ function renderCalendar(months) {
           const hasEntry = recordedDates.has(day.dateKey);
           const entryClass = hasEntry ? "has-entry" : "";
           const dimClass = matchesCalendarFilter(day, recordedDates) ? "" : "is-dimmed";
-          const kichoText = day.kichoDirections?.goodLabels?.length ? day.kichoDirections.goodLabels.join("・") : "なし";
-          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} ${getScoreText(day.kyuseiContext?.adjustment || 0)} / 吉方位 ${kichoText}`);
+          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} ${getScoreText(day.kyuseiContext?.adjustment || 0)}`);
           const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
           const markerHtml = day.specialDateContext.statuses.length
             ? `<span class="day-marker-corner is-caution" aria-hidden="true">!</span>`
@@ -1657,7 +1660,6 @@ function renderCalendar(months) {
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-kyusei">${day.kyusei?.name || ""}</span>
-              <span class="day-kicho">${kichoText}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
               <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
