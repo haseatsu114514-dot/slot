@@ -1491,6 +1491,19 @@ html[data-theme="light"] .month-accordion-summary {
   font-size: 0.72rem;
 }
 
+.day-kyusei {
+  font-size: 0.56rem;
+  color: var(--gold-soft);
+  opacity: 0.85;
+}
+
+.day-kicho {
+  font-size: 0.48rem;
+  color: var(--special);
+  opacity: 0.9;
+  line-height: 1.2;
+}
+
 .day-ts {
   font-size: 0.54rem;
   color: var(--muted);
@@ -1514,6 +1527,8 @@ html[data-theme="light"] .month-accordion-summary {
 @media (min-width: 720px) {
   .day-rating { font-size: 1.22rem; }
   .day-kanshi { font-size: 0.8rem; }
+  .day-kyusei { font-size: 0.6rem; }
+  .day-kicho { font-size: 0.52rem; }
   .day-ts { font-size: 0.58rem; }
   .day-score-pill {
     padding: 3px 7px;

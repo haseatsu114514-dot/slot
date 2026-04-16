@@ -21,8 +21,9 @@ import {
   aggregateByBranch,
   aggregateByElement,
   aggregateByRatingTier,
-  SEED_MONTHLY_ENTRIES
-} from "./kanshi-data.js?v=20260415a";
+  SEED_MONTHLY_ENTRIES,
+  KYUSEI_NAMES
+} from "./kanshi-data.js?v=20260416c";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
@@ -1633,7 +1634,8 @@ function renderCalendar(months) {
           const hasEntry = recordedDates.has(day.dateKey);
           const entryClass = hasEntry ? "has-entry" : "";
           const dimClass = matchesCalendarFilter(day, recordedDates) ? "" : "is-dimmed";
-          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label}`);
+          const kichoText = day.kichoDirections?.goodLabels?.length ? day.kichoDirections.goodLabels.join("・") : "なし";
+          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} / 吉方位 ${kichoText}`);
           const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
           const markerHtml = day.specialDateContext.statuses.length
             ? `<span class="day-marker-corner is-caution" aria-hidden="true">!</span>`
@@ -1654,6 +1656,8 @@ function renderCalendar(months) {
               <span class="day-number">${day.day}</span>
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
+              <span class="day-kyusei">${day.kyusei?.name || ""}</span>
+              <span class="day-kicho">吉方位 ${kichoText}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
               <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
@@ -1781,6 +1785,16 @@ function renderSelectedDay() {
           <span>月干支</span>
           <strong>${day.monthContext.kanshi || "-"}</strong>
           <small>${day.monthContext.seasonal?.label || day.monthContext.statuses.join(" / ") || "補正なし"} ${getScoreText(day.monthContext.adjustment)}</small>
+        </div>
+        <div class="selected-stat">
+          <span>九星</span>
+          <strong>${day.kyusei?.name || "-"}</strong>
+          <small>日家九星</small>
+        </div>
+        <div class="selected-stat selected-stat-kicho">
+          <span>吉方位</span>
+          <strong>${day.kichoDirections?.goodLabels?.length ? day.kichoDirections.goodLabels.join("・") : "なし"}</strong>
+          <small>${buildBoardSummary(day.kichoDirections?.board, day.kyusei?.number)}</small>
         </div>
         <div class="selected-stat">
           <span>質感ステータス</span>
@@ -2584,6 +2598,28 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function buildBoardSummary(board, centerStar) {
+  if (!board || !centerStar) return "盤データなし";
+  const rows = [
+    ["SE", "S", "SW"],
+    ["E", "中", "W"],
+    ["NE", "N", "NW"]
+  ];
+  return rows
+    .map((row) =>
+      row
+        .map((direction) => {
+          if (direction === "中") {
+            return KYUSEI_NAMES[(centerStar || 1) - 1] || "-";
+          }
+          const star = board[direction];
+          return KYUSEI_NAMES[(star || 1) - 1] || "-";
+        })
+        .join(" ")
+    )
+    .join(" / ");
 }
 
 function buildScoreBreakdown(day) {

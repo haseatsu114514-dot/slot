@@ -55,6 +55,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   anchorKanshi: "辛亥",
   startMonth: "2026-04",
   monthCount: 3,
+  userStar: 4,
+  badStars: [7, 6],
   syncIntervalMs: 60000,
   spreadsheetUrl: "",
   syncEndpoint: "",
@@ -718,6 +720,8 @@ export function formatYen(value) {
 export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
   const date = parseDateKey(dateKey);
   const kanshi = getKanshiForDateKey(dateKey, config);
+  const kyusei = getKyuseiForDateKey(dateKey);
+  const kichoDirections = getKichoDirections(kyusei.number, config.userStar, config.badStars);
   const baseRecord = records[kanshi] || normalizeRecord(kanshi, {});
   const monthContextBase = getMonthContext(dateKey);
   const specialDateContext = getSpecialDateContext(date);
@@ -765,6 +769,8 @@ export function buildDayInfo(dateKey, records, config = DEFAULT_CONFIG) {
     day: date.getUTCDate(),
     weekday: date.getUTCDay(),
     kanshi,
+    kyusei,
+    kichoDirections,
     record,
     rating,
     playStyle,
@@ -900,6 +906,116 @@ export function aggregateByRatingTier(records) {
       avgExpected: mean(expectedList)
     };
   });
+}
+
+/* -- 九星気学 (日家九星) -- */
+
+export const KYUSEI_NAMES = Object.freeze([
+  "一白", "二黒", "三碧", "四緑", "五黄", "六白", "七赤", "八白", "九紫"
+]);
+
+const KYUSEI_SWITCH_POINTS = Object.freeze([
+  { date: "2025-06-24", direction: "desc", star: 9 },
+  { date: "2025-12-21", direction: "asc", star: 1 },
+  { date: "2026-06-19", direction: "desc", star: 9 },
+  { date: "2026-12-16", direction: "asc", star: 1 },
+  { date: "2027-06-14", direction: "desc", star: 9 },
+  { date: "2027-12-11", direction: "asc", star: 1 }
+]);
+
+export function getKyuseiForDateKey(dateKey) {
+  let switchPoint = KYUSEI_SWITCH_POINTS[0];
+  for (const point of KYUSEI_SWITCH_POINTS) {
+    if (dateKey >= point.date) switchPoint = point;
+    else break;
+  }
+
+  const targetDate = parseDateKey(dateKey);
+  const switchDate = parseDateKey(switchPoint.date);
+  const dayOffset = Math.round((targetDate.getTime() - switchDate.getTime()) / 86400000);
+
+  let starIndex;
+  if (switchPoint.direction === "asc") {
+    starIndex = mod(switchPoint.star - 1 + dayOffset, 9);
+  } else {
+    starIndex = mod(switchPoint.star - 1 - dayOffset, 9);
+  }
+
+  return {
+    number: starIndex + 1,
+    name: KYUSEI_NAMES[starIndex]
+  };
+}
+
+/* -- 吉方位 (日盤 順飛) -- */
+
+const FLIGHT_PATH = Object.freeze(["NW", "W", "NE", "S", "N", "SW", "E", "SE"]);
+
+const DIR_OPPOSITES = Object.freeze({
+  N: "S",
+  S: "N",
+  E: "W",
+  W: "E",
+  NE: "SW",
+  SW: "NE",
+  NW: "SE",
+  SE: "NW"
+});
+
+export const DIR_LABELS = Object.freeze({
+  N: "北",
+  S: "南",
+  E: "東",
+  W: "西",
+  NE: "北東",
+  NW: "北西",
+  SE: "南東",
+  SW: "南西"
+});
+
+const ALL_DIRECTIONS = Object.freeze(["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+
+export function buildDailyBoard(centerStar) {
+  const board = {};
+  FLIGHT_PATH.forEach((direction, index) => {
+    board[direction] = (centerStar + index) % 9 + 1;
+  });
+  return board;
+}
+
+export function getKichoDirections(centerStar, userStar = 4, badStars = [7, 6]) {
+  const board = buildDailyBoard(centerStar);
+  const starToDirection = {};
+
+  for (const direction of ALL_DIRECTIONS) {
+    starToDirection[board[direction]] = direction;
+  }
+
+  const badDirections = new Set();
+
+  if (starToDirection[userStar]) {
+    badDirections.add(starToDirection[userStar]);
+    badDirections.add(DIR_OPPOSITES[starToDirection[userStar]]);
+  }
+
+  if (starToDirection[5]) {
+    badDirections.add(starToDirection[5]);
+    badDirections.add(DIR_OPPOSITES[starToDirection[5]]);
+  }
+
+  for (const star of badStars) {
+    if (starToDirection[star]) {
+      badDirections.add(starToDirection[star]);
+    }
+  }
+
+  const good = ALL_DIRECTIONS.filter((direction) => !badDirections.has(direction));
+
+  return {
+    good,
+    goodLabels: good.map((direction) => DIR_LABELS[direction]),
+    board
+  };
 }
 
 export function buildCalendarMonth(year, month, records, config = DEFAULT_CONFIG) {
