@@ -13,6 +13,7 @@ import {
   getPlayStyle,
   getRating,
   getKanshiForDateKey,
+  getKyuseiForDateKey,
   getConfidence,
   RATING_THRESHOLDS,
   isPerfectRecord,
@@ -28,6 +29,7 @@ import {
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
 const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
+const STATS_SCOPE_STORAGE_KEY = "slot-kanshi-stats-scope-v1";
 const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
 const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
 const THEMES = ["dark", "sepia", "light"];
@@ -44,6 +46,7 @@ const state = {
   },
   upcomingExpanded: false,
   calendarFilter: loadCalendarFilter(),
+  statsScope: loadStatsScope(),
   goal: loadGoal(),
   editingEntryId: null
 };
@@ -59,6 +62,7 @@ const refs = {
   stemTable: document.getElementById("stemTable"),
   branchTable: document.getElementById("branchTable"),
   elementTable: document.getElementById("elementTable"),
+  kyuseiTable: document.getElementById("kyuseiTable"),
   ratingSummaryTable: document.getElementById("ratingSummaryTable"),
   mobileStickyDetail: document.getElementById("mobileStickyDetail"),
   syncBadgeText: document.getElementById("syncBadgeText"),
@@ -75,7 +79,10 @@ const refs = {
   calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]")),
   performancePanel: document.getElementById("performancePanel"),
   profitTrendChart: document.getElementById("profitTrendChart"),
+  profitTrendTitle: document.getElementById("profitTrendTitle"),
   kanshiHeatmap: document.getElementById("kanshiHeatmap"),
+  kanshiHeatmapTitle: document.getElementById("kanshiHeatmapTitle"),
+  kanshiHeatmapNote: document.getElementById("kanshiHeatmapNote"),
   themeToggleButton: document.getElementById("themeToggleButton"),
   exportJsonButton: document.getElementById("exportJsonButton"),
   importJsonInput: document.getElementById("importJsonInput"),
@@ -85,7 +92,8 @@ const refs = {
   quickInputPopover: document.getElementById("quickInputPopover"),
   exportReportButton: document.getElementById("exportReportButton"),
   exportScopeSelect: document.getElementById("exportScopeSelect"),
-  exportCsvButton: document.getElementById("exportCsvButton")
+  exportCsvButton: document.getElementById("exportCsvButton"),
+  statsScopeButtons: Array.from(document.querySelectorAll("[data-stats-scope]"))
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -104,6 +112,42 @@ document.addEventListener("DOMContentLoaded", () => {
   startAutoSync();
   registerServiceWorker();
 });
+
+function ensureKyuseiAggregateBlock() {
+  const aggregateGrid = document.querySelector(".panel-aggregates .aggregate-grid");
+  if (!aggregateGrid) return;
+
+  const aggregateHeading = document.querySelector(".panel-aggregates .collapsible-summary h2");
+  if (aggregateHeading) {
+    aggregateHeading.textContent = "天干・地支 集計 / 五行・九星サマリー";
+  }
+
+  if (refs.kyuseiTable && document.body.contains(refs.kyuseiTable)) return;
+
+  const existingTable = document.getElementById("kyuseiTable");
+  if (existingTable) {
+    refs.kyuseiTable = existingTable;
+    return;
+  }
+
+  const block = document.createElement("div");
+  block.className = "aggregate-block";
+  block.innerHTML = `
+    <h3 class="aggregate-title">九星気学サマリー</h3>
+    <div class="aggregate-table-wrap">
+      <table class="aggregate-table kyusei-table" id="kyuseiTable"></table>
+    </div>
+  `;
+
+  const ratingBlock = refs.ratingSummaryTable?.closest(".aggregate-block");
+  if (ratingBlock) {
+    aggregateGrid.insertBefore(block, ratingBlock);
+  } else {
+    aggregateGrid.appendChild(block);
+  }
+
+  refs.kyuseiTable = block.querySelector("#kyuseiTable");
+}
 
 function loadTheme() {
   try {
@@ -264,6 +308,18 @@ function wireEvents() {
     });
   });
   syncCalendarFilterButtons();
+
+  refs.statsScopeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const scope = button.dataset.statsScope;
+      if (!scope || state.statsScope === scope) return;
+      state.statsScope = scope;
+      persistStatsScope();
+      syncStatsScopeButtons();
+      renderCharts();
+    });
+  });
+  syncStatsScopeButtons();
 
   refs.jumpTodayButton?.addEventListener("click", () => {
     jumpToToday();
@@ -901,6 +957,14 @@ function syncCalendarFilterButtons() {
   });
 }
 
+function syncStatsScopeButtons() {
+  refs.statsScopeButtons.forEach((button) => {
+    const active = button.dataset.statsScope === state.statsScope;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
 function jumpToToday() {
   const todayKey = getTodayDateKey();
   const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
@@ -997,9 +1061,27 @@ function loadCalendarFilter() {
   return "all";
 }
 
+function loadStatsScope() {
+  try {
+    const raw = window.localStorage.getItem(STATS_SCOPE_STORAGE_KEY);
+    if (raw === "last30" || raw === "all") return raw;
+  } catch (error) {
+    /* ignore */
+  }
+  return "last30";
+}
+
 function persistCalendarFilter() {
   try {
     window.localStorage.setItem(FILTER_STORAGE_KEY, state.calendarFilter);
+  } catch (error) {
+    /* ignore */
+  }
+}
+
+function persistStatsScope() {
+  try {
+    window.localStorage.setItem(STATS_SCOPE_STORAGE_KEY, state.statsScope);
   } catch (error) {
     /* ignore */
   }
@@ -1131,7 +1213,7 @@ function getUpcomingDays(months) {
 /**
  * Bucket counts for the 90-day summary cards.
  * @param {Array<{dayRows: Array<{record: object}>}>} months
- * @returns {{total:number, perfect:number, special:number, go:number, hold:number, avoid:number}}
+ * @returns {{total:number, perfect:number, special:number, go:number, hold:number, avoid:number, kyuseiGood:number, kyuseiBad:number}}
  */
 function getSummary(months) {
   const allDays = months.flatMap((month) => month.dayRows);
@@ -1141,7 +1223,9 @@ function getSummary(months) {
     special: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(day.record)).length,
     go: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin && day.record.score < RATING_THRESHOLDS.specialMin).length,
     hold: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.holdMin && day.record.score < RATING_THRESHOLDS.goMin).length,
-    avoid: allDays.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length
+    avoid: allDays.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length,
+    kyuseiGood: allDays.filter((day) => Number(day.kyuseiContext?.adjustment) > 0).length,
+    kyuseiBad: allDays.filter((day) => Number(day.kyuseiContext?.adjustment) < 0).length
   };
 }
 
@@ -1372,10 +1456,14 @@ function getActiveConfig() {
 }
 
 function renderAggregates(records) {
+  ensureKyuseiAggregateBlock();
+
   const entriesMap = getAggregateEntriesMap();
+  const { entries } = getDedupedAggregateEntries();
   const stemRows = aggregateByStem(entriesMap);
   const branchRows = aggregateByBranch(entriesMap);
   const elementRows = aggregateByElement(stemRows, branchRows);
+  const kyuseiRows = aggregateEntriesByKyusei(entries);
   const ratingRows = aggregateByRatingTier(records);
 
   if (refs.stemTable) {
@@ -1387,9 +1475,45 @@ function renderAggregates(records) {
   if (refs.elementTable) {
     refs.elementTable.innerHTML = buildElementTable(elementRows);
   }
+  if (refs.kyuseiTable) {
+    refs.kyuseiTable.innerHTML = buildStemBranchTable(kyuseiRows, "九星");
+  }
   if (refs.ratingSummaryTable) {
     refs.ratingSummaryTable.innerHTML = buildRatingSummaryTable(ratingRows);
   }
+}
+
+function aggregateEntriesByKyusei(entries = []) {
+  const rows = KYUSEI_NAMES.map((name) => ({
+    key: name,
+    label: "",
+    wins: 0,
+    losses: 0,
+    total: 0,
+    days: 0,
+    daily: 0,
+    hourly: 0
+  }));
+
+  for (const entry of entries) {
+    const dateKey = normalizeTargetDate(entry?.targetDate);
+    if (!dateKey) continue;
+    const profit = Number(entry?.profit);
+    if (!Number.isFinite(profit)) continue;
+    const kyusei = getKyuseiForDateKey(dateKey);
+    const row = rows[kyusei.number - 1];
+    if (!row) continue;
+    row.total += profit;
+    row.days += 1;
+    if (profit > 0) row.wins += 1;
+    if (profit < 0) row.losses += 1;
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    daily: row.days ? Math.round(row.total / row.days) : 0,
+    hourly: row.days ? Math.round(row.total / row.days / 3.5) : 0
+  }));
 }
 
 function buildStemBranchTable(rows, headerLabel) {
@@ -1542,7 +1666,9 @@ function renderSummary(summary) {
     buildSummaryCard("◎ 絶好", summary.special, "スコア7-8", "is-special"),
     buildSummaryCard("○ 行くべき", summary.go, "スコア5-6", "is-go"),
     buildSummaryCard("△ どちらでも", summary.hold, "スコア3-4", "is-hold"),
-    buildSummaryCard("× 見送り", summary.avoid, "スコア2以下", "is-avoid")
+    buildSummaryCard("× 見送り", summary.avoid, "スコア2以下", "is-avoid"),
+    buildSummaryCard("九星追い風", summary.kyuseiGood, "+補正の日", "is-kyusei-good"),
+    buildSummaryCard("九星注意", summary.kyuseiBad, "-補正の日", "is-kyusei-caution")
   ].join("");
 }
 
@@ -1634,8 +1760,7 @@ function renderCalendar(months) {
           const hasEntry = recordedDates.has(day.dateKey);
           const entryClass = hasEntry ? "has-entry" : "";
           const dimClass = matchesCalendarFilter(day, recordedDates) ? "" : "is-dimmed";
-          const kichoText = day.kichoDirections?.goodLabels?.length ? day.kichoDirections.goodLabels.join("・") : "なし";
-          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} / 吉方位 ${kichoText}`);
+          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} ${getScoreText(day.kyuseiContext?.adjustment || 0)}`);
           const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
           const markerHtml = day.specialDateContext.statuses.length
             ? `<span class="day-marker-corner is-caution" aria-hidden="true">!</span>`
@@ -1657,7 +1782,6 @@ function renderCalendar(months) {
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-kyusei">${day.kyusei?.name || ""}</span>
-              <span class="day-kicho">吉方位 ${kichoText}</span>
               <span class="day-ts">${day.record.ts || "通変星なし"}</span>
               <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
               <span class="day-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
@@ -1718,6 +1842,9 @@ function renderSelectedDay() {
     const specialDateAdjustmentLabel = day.specialDateContext.adjustment === 0
       ? "日付補正なし"
       : `日付補正 ${getScoreText(day.specialDateContext.adjustment)}`;
+    const kyuseiAdjustmentLabel = day.kyuseiContext?.adjustment === 0
+      ? "九星補正なし"
+      : `九星補正 ${getScoreText(day.kyuseiContext?.adjustment || 0)}`;
     const playStyleAdjustmentLabel = day.playStyle.adjustment === 0
       ? "質感補正なし"
       : `質感補正 ${getScoreText(day.playStyle.adjustment)}`;
@@ -1774,7 +1901,7 @@ function renderSelectedDay() {
         <div class="selected-stat">
           <span>現在スコア</span>
           <strong>${formatScoreValue(day.record.score)}</strong>
-          <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
+          <small>日基準 ${day.record.baseScore} / ${monthAdjustmentLabel} / ${specialDateAdjustmentLabel} / ${kyuseiAdjustmentLabel} / ${playStyleAdjustmentLabel}</small>
         </div>
         <div class="selected-stat">
           <span>通変星</span>
@@ -1789,7 +1916,7 @@ function renderSelectedDay() {
         <div class="selected-stat">
           <span>九星</span>
           <strong>${day.kyusei?.name || "-"}</strong>
-          <small>日家九星</small>
+          <small>${day.kyuseiContext?.label || "日家九星"} / ${day.kyuseiContext?.sampleDays || 0}日サンプル / ${getScoreText(day.kyuseiContext?.adjustment || 0)}</small>
         </div>
         <div class="selected-stat selected-stat-kicho">
           <span>吉方位</span>
@@ -1800,6 +1927,11 @@ function renderSelectedDay() {
           <span>質感ステータス</span>
           <strong>${day.playStyle.label}</strong>
           <small>${day.playStyle.note}</small>
+        </div>
+        <div class="selected-stat">
+          <span>九星傾向</span>
+          <strong>${day.kyuseiContext?.shortLabel || "九星中立"}</strong>
+          <small>${day.kyuseiContext?.note || "九星補正なし"}</small>
         </div>
         <div class="selected-stat">
           <span>曜日補助</span>
@@ -2050,47 +2182,98 @@ function buildWeekdayChip(weekday, weekdayContext) {
   return `<span class="tag ${getToneClass(weekdayContext.tone)}">${weekdayContext.shortLabel} ${getScoreText(weekdayContext.adjustment)}</span>`;
 }
 
-function renderCharts() {
-  renderProfitTrend();
-  renderKanshiHeatmap();
+function getStatsScopeMeta(scope = state.statsScope) {
+  if (scope === "all") {
+    return {
+      key: "all",
+      label: "全区間",
+      trendTitle: "収支推移 (全区間)",
+      trendEmpty: "全区間に記録がありません。",
+      trendAriaLabel: "全区間の累計収支と日次収支",
+      heatmapTitle: "干支×曜日ヒートマップ (全区間)",
+      heatmapNote: "縦=曜日 / 横=記録数の多い干支。色は平均収支 (緑=プラス, 赤=マイナス) / セル内は0.1k刻み。",
+      heatmapEmpty: "全区間に記録がありません。"
+    };
+  }
+
+  return {
+    key: "last30",
+    label: "直近30日",
+    startKey: getFutureDateKey(-29),
+    endKey: getTodayDateKey(),
+    trendTitle: "収支推移 (直近30日)",
+    trendEmpty: "直近30日に記録がありません。",
+    trendAriaLabel: "直近30日の累計収支と日次収支",
+    heatmapTitle: "干支×曜日ヒートマップ (直近30日)",
+    heatmapNote: "縦=曜日 / 横=直近30日で記録された干支。色は平均収支 (緑=プラス, 赤=マイナス) / セル内は0.1k刻み。",
+    heatmapEmpty: "直近30日に記録がありません。"
+  };
 }
 
-function renderProfitTrend() {
+function filterEntriesByStatsScope(entries, scopeMeta = getStatsScopeMeta()) {
+  if (scopeMeta.key === "all") return entries;
+  return entries.filter((entry) => {
+    const dateKey = normalizeTargetDate(entry?.targetDate);
+    return dateKey && dateKey >= scopeMeta.startKey && dateKey <= scopeMeta.endKey;
+  });
+}
+
+function renderCharts() {
+  const scopeMeta = getStatsScopeMeta();
+  refs.profitTrendTitle && (refs.profitTrendTitle.textContent = scopeMeta.trendTitle);
+  refs.kanshiHeatmapTitle && (refs.kanshiHeatmapTitle.textContent = scopeMeta.heatmapTitle);
+  refs.kanshiHeatmapNote && (refs.kanshiHeatmapNote.textContent = scopeMeta.heatmapNote);
+  syncStatsScopeButtons();
+  renderProfitTrend(scopeMeta);
+  renderKanshiHeatmap(scopeMeta);
+}
+
+function renderProfitTrend(scopeMeta = getStatsScopeMeta()) {
   if (!refs.profitTrendChart) return;
   const { entries } = getDedupedAggregateEntries();
-  const todayKey = getTodayDateKey();
-  const rangeDays = 30;
+  const scopedEntries = filterEntriesByStatsScope(entries, scopeMeta);
   const dayMs = 86400000;
 
   // Build an index of normalized entries by date key.
   const byDate = new Map();
-  for (const entry of entries) {
+  for (const entry of scopedEntries) {
     const key = normalizeTargetDate(entry.targetDate);
     const profit = Number(entry.profit);
     if (!key || !Number.isFinite(profit)) continue;
     byDate.set(key, (byDate.get(key) || 0) + profit);
   }
 
-  // Build the last N days in order ending at today.
-  const anchor = new Date(`${todayKey}T12:00:00Z`);
-  const points = [];
-  let cum = 0;
-  for (let i = rangeDays - 1; i >= 0; i -= 1) {
-    const date = new Date(anchor.getTime() - i * dayMs);
-    const y = date.getUTCFullYear();
-    const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(date.getUTCDate()).padStart(2, "0");
-    const key = `${y}-${m}-${d}`;
-    const daily = byDate.get(key) || 0;
-    cum += daily;
-    points.push({ key, daily, cum });
+  let points = [];
+  if (scopeMeta.key === "all") {
+    const keys = [...byDate.keys()].sort((left, right) => left.localeCompare(right));
+    let cum = 0;
+    points = keys.map((key) => {
+      const daily = byDate.get(key) || 0;
+      cum += daily;
+      return { key, daily, cum };
+    });
+  } else {
+    const anchor = new Date(`${scopeMeta.endKey}T12:00:00Z`);
+    let cum = 0;
+    for (let i = 29; i >= 0; i -= 1) {
+      const date = new Date(anchor.getTime() - i * dayMs);
+      const y = date.getUTCFullYear();
+      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(date.getUTCDate()).padStart(2, "0");
+      const key = `${y}-${m}-${d}`;
+      const daily = byDate.get(key) || 0;
+      cum += daily;
+      points.push({ key, daily, cum });
+    }
   }
 
   const daily = points.map((p) => p.daily);
   const cumVals = points.map((p) => p.cum);
-  const recorded = points.filter((p) => byDate.has(p.key)).length;
+  const recorded = scopeMeta.key === "all"
+    ? points.length
+    : points.filter((p) => byDate.has(p.key)).length;
   if (recorded === 0) {
-    refs.profitTrendChart.innerHTML = `<p class="empty-text">直近30日に記録がありません。</p>`;
+    refs.profitTrendChart.innerHTML = `<p class="empty-text">${scopeMeta.trendEmpty}</p>`;
     return;
   }
 
@@ -2105,6 +2288,7 @@ function renderProfitTrend() {
   const cSpan = cmax - cmin || 1;
   const scaleY = (v) => padY + innerH * (1 - (v - cmin) / cSpan);
   const stepX = innerW / Math.max(1, points.length - 1);
+  const barWidth = Math.max(1, Math.min(6, stepX * 0.45));
   const path = points
     .map((p, i) => `${i === 0 ? "M" : "L"}${(padX + stepX * i).toFixed(1)},${scaleY(p.cum).toFixed(1)}`)
     .join(" ");
@@ -2114,11 +2298,11 @@ function renderProfitTrend() {
   const barsSvg = points
     .map((p, i) => {
       if (!p.daily) return "";
-      const x = padX + stepX * i - 1.5;
+      const x = padX + stepX * i - barWidth / 2;
       const h = Math.abs(p.daily) * barScale;
       const y = p.daily > 0 ? scaleY(0) - h : scaleY(0);
       const cls = p.daily > 0 ? "trend-bar-plus" : "trend-bar-minus";
-      return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="3" height="${Math.max(1, h).toFixed(1)}"></rect>`;
+      return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(1, h).toFixed(1)}"></rect>`;
     })
     .join("");
   const latestCum = points[points.length - 1].cum;
@@ -2126,10 +2310,11 @@ function renderProfitTrend() {
 
   refs.profitTrendChart.innerHTML = `
     <div class="trend-head">
+      <span>対象 ${scopeMeta.label}</span>
       <span>累計 <strong class="${tone}">${formatYen(latestCum)}</strong></span>
       <span>記録日数 ${recorded}</span>
     </div>
-    <svg class="trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="直近30日の累計収支と日次収支">
+    <svg class="trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${scopeMeta.trendAriaLabel}">
       <line x1="${padX}" y1="${zeroY}" x2="${width - padX}" y2="${zeroY}" class="trend-axis"></line>
       ${barsSvg}
       <path class="trend-line" d="${path}" fill="none"></path>
@@ -2137,18 +2322,19 @@ function renderProfitTrend() {
   `;
 }
 
-function renderKanshiHeatmap() {
+function renderKanshiHeatmap(scopeMeta = getStatsScopeMeta()) {
   if (!refs.kanshiHeatmap) return;
   const { entries } = getDedupedAggregateEntries();
-  if (!entries.length) {
-    refs.kanshiHeatmap.innerHTML = `<p class="empty-text">過去記録がまだありません。</p>`;
+  const scopedEntries = filterEntriesByStatsScope(entries, scopeMeta);
+  if (!scopedEntries.length) {
+    refs.kanshiHeatmap.innerHTML = `<p class="empty-text">${scopeMeta.heatmapEmpty}</p>`;
     return;
   }
 
   // Aggregate avg profit by kanshi×weekday; group by kanshi when total >= 1 record.
   const cellsMap = new Map();
   const kanshiSet = new Map(); // kanshi -> total count (for ranking)
-  for (const entry of entries) {
+  for (const entry of scopedEntries) {
     const date = normalizeTargetDate(entry.targetDate);
     if (!date) continue;
     const profit = Number(entry.profit);
@@ -2171,7 +2357,7 @@ function renderKanshiHeatmap() {
     .map(([k]) => k);
 
   if (!kanshiColumns.length) {
-    refs.kanshiHeatmap.innerHTML = `<p class="empty-text">過去記録がまだありません。</p>`;
+    refs.kanshiHeatmap.innerHTML = `<p class="empty-text">${scopeMeta.heatmapEmpty}</p>`;
     return;
   }
 
@@ -2197,7 +2383,8 @@ function renderKanshiHeatmap() {
         if (!data) {
           return `<div class="heatmap-cell is-empty" title="${kanshi}×${weekdayLabel}曜: 記録なし"></div>`;
         }
-        const avg = Math.round(data.sum / data.count);
+        const avg = data.sum / data.count;
+        const avgRounded = Math.round(avg);
         const ratio = Math.max(-1, Math.min(1, avg / maxAbs));
         let bg;
         if (ratio > 0) {
@@ -2210,8 +2397,8 @@ function renderKanshiHeatmap() {
           bg = "rgba(255,255,255,0.08)";
         }
         return `
-          <div class="heatmap-cell" style="background:${bg}" title="${kanshi}×${weekdayLabel}曜 平均${formatYen(avg)} (${data.count}件)">
-            <span class="heatmap-cell-value">${avg > 0 ? "+" : ""}${Math.round(avg / 1000)}k</span>
+          <div class="heatmap-cell" style="background:${bg}" title="${kanshi}×${weekdayLabel}曜 平均${formatYen(avgRounded)} (${data.count}件)">
+            <span class="heatmap-cell-value">${formatHeatmapValue(avg)}</span>
           </div>
         `;
       })
@@ -2222,7 +2409,7 @@ function renderKanshiHeatmap() {
     `;
   }).join("");
 
-  const columnsStyle = `grid-template-columns: 36px repeat(${kanshiColumns.length}, minmax(36px, 1fr));`;
+  const columnsStyle = `grid-template-columns: 40px repeat(${kanshiColumns.length}, minmax(48px, 1fr));`;
   refs.kanshiHeatmap.innerHTML = `
     <div class="heatmap" style="${columnsStyle}">
       <div></div>
@@ -2238,6 +2425,7 @@ function buildScoreBreakdownBar(day) {
     { label: "日基準", value: Number(day.record.baseScore) || 0, cls: "seg-base" },
     { label: "月", value: Number(day.monthContext.adjustment) || 0, cls: "seg-month" },
     { label: "日付", value: Number(day.specialDateContext.adjustment) || 0, cls: "seg-special" },
+    { label: "九星", value: Number(day.kyuseiContext?.adjustment) || 0, cls: "seg-kyusei" },
     { label: "質感", value: Number(day.playStyle.adjustment) || 0, cls: "seg-play" },
     { label: "曜日", value: Number(day.weekdayContext.adjustment) || 0, cls: "seg-weekday" }
   ];
@@ -2262,6 +2450,15 @@ function buildScoreBreakdownBar(day) {
       <div class="breakdown-bar">${bars}</div>
     </section>
   `;
+}
+
+function formatHeatmapValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0k";
+  const kilo = Math.round((numeric / 1000) * 10) / 10;
+  if (Math.abs(kilo) < 0.05) return "0k";
+  const text = Number.isInteger(kilo) ? kilo.toFixed(0) : kilo.toFixed(1);
+  return `${kilo > 0 ? "+" : ""}${text}k`;
 }
 
 function buildSameKanshiComparison(kanshi, currentDateKey) {
@@ -2627,6 +2824,7 @@ function buildScoreBreakdown(day) {
     `日基準 ${formatScoreValue(day.record.baseScore)}`,
     `月 ${getScoreText(day.monthContext.adjustment)}`,
     `日付 ${getScoreText(day.specialDateContext.adjustment)}`,
+    `九星 ${getScoreText(day.kyuseiContext?.adjustment || 0)}`,
     `質感 ${getScoreText(day.playStyle.adjustment)}`
   ].join(" / ");
 }
