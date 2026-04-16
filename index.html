@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260417a">
+    <link rel="stylesheet" href="./styles.css?v=20260416d">
     <link rel="manifest" href="./manifest.webmanifest">
     <meta name="theme-color" content="#0f1014">
   </head>
@@ -176,7 +176,7 @@
             <section class="chart-block">
               <h3 id="kanshiHeatmapTitle" class="chart-title">干支×曜日ヒートマップ (直近30日)</h3>
               <div id="kanshiHeatmap" class="chart-wrap"></div>
-              <p id="kanshiHeatmapNote" class="chart-note">縦=曜日 / 横=直近30日で記録された干支。色は平均収支 (緑=プラス, 赤=マイナス) / セル内は0.1k刻み。</p>
+              <p id="kanshiHeatmapNote" class="chart-note">縦=曜日 / 横=直近30日で記録された干支。色は平均収支 (緑=プラス, 赤=マイナス)。</p>
             </section>
           </div>
         </details>
@@ -217,7 +217,7 @@
           <summary class="collapsible-summary">
             <div>
               <p class="panel-kicker">Stem &amp; Branch</p>
-              <h2>天干・地支 集計 / 五行・九星サマリー</h2>
+              <h2>天干・地支 集計 / 五行サマリー</h2>
               <span class="panel-note">毎回見るわけではない詳細統計。タップで展開</span>
             </div>
             <span class="collapsible-arrow" aria-hidden="true"></span>
@@ -239,12 +239,6 @@
               <h3 class="aggregate-title">五行サマリー（天/地/評）</h3>
               <div class="aggregate-table-wrap">
                 <table class="aggregate-table element-table" id="elementTable"></table>
-              </div>
-            </div>
-            <div class="aggregate-block">
-              <h3 class="aggregate-title">九星気学サマリー</h3>
-              <div class="aggregate-table-wrap">
-                <table class="aggregate-table kyusei-table" id="kyuseiTable"></table>
               </div>
             </div>
             <div class="aggregate-block">
@@ -300,7 +294,7 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260417a"></script>
+    <script type="module" src="./app.js?v=20260416d"></script>
     <script src="./calendar-kicho-label.js?v=20260416a"></script>
   </body>
 </html>

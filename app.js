@@ -113,6 +113,42 @@ document.addEventListener("DOMContentLoaded", () => {
   registerServiceWorker();
 });
 
+function ensureKyuseiAggregateBlock() {
+  const aggregateGrid = document.querySelector(".panel-aggregates .aggregate-grid");
+  if (!aggregateGrid) return;
+
+  const aggregateHeading = document.querySelector(".panel-aggregates .collapsible-summary h2");
+  if (aggregateHeading) {
+    aggregateHeading.textContent = "天干・地支 集計 / 五行・九星サマリー";
+  }
+
+  if (refs.kyuseiTable && document.body.contains(refs.kyuseiTable)) return;
+
+  const existingTable = document.getElementById("kyuseiTable");
+  if (existingTable) {
+    refs.kyuseiTable = existingTable;
+    return;
+  }
+
+  const block = document.createElement("div");
+  block.className = "aggregate-block";
+  block.innerHTML = `
+    <h3 class="aggregate-title">九星気学サマリー</h3>
+    <div class="aggregate-table-wrap">
+      <table class="aggregate-table kyusei-table" id="kyuseiTable"></table>
+    </div>
+  `;
+
+  const ratingBlock = refs.ratingSummaryTable?.closest(".aggregate-block");
+  if (ratingBlock) {
+    aggregateGrid.insertBefore(block, ratingBlock);
+  } else {
+    aggregateGrid.appendChild(block);
+  }
+
+  refs.kyuseiTable = block.querySelector("#kyuseiTable");
+}
+
 function loadTheme() {
   try {
     const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -1420,6 +1456,8 @@ function getActiveConfig() {
 }
 
 function renderAggregates(records) {
+  ensureKyuseiAggregateBlock();
+
   const entriesMap = getAggregateEntriesMap();
   const { entries } = getDedupedAggregateEntries();
   const stemRows = aggregateByStem(entriesMap);
