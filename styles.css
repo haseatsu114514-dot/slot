@@ -467,6 +467,22 @@ a {
   background: rgba(214, 140, 92, 0.14);
 }
 
+.summary-card.is-profit-plus {
+  background: rgba(110, 210, 156, 0.14);
+}
+
+.summary-card.is-profit-plus .summary-value {
+  color: var(--go);
+}
+
+.summary-card.is-profit-minus {
+  background: rgba(228, 122, 122, 0.14);
+}
+
+.summary-card.is-profit-minus .summary-value {
+  color: var(--avoid);
+}
+
 .summary-label,
 .summary-note {
   color: var(--muted);
