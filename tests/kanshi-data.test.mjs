@@ -20,6 +20,7 @@ import {
   normalizeRecord,
   blendExpected,
   clamp,
+  computeLiveScore,
   getRating,
   applyEntriesToRecords,
   buildBaseRecords,
@@ -158,9 +159,32 @@ suite("blendExpected / 評価", () => {
   });
   test("実績多いほど avg 寄りになる", () => {
     const result = blendExpected(10000, -2000, 5);
-    // 5*10000 + 2*(-2000) = 50000-4000 = 46000 / 7 ≈ 6571
+    // (10000*5 + (-2000)*2) / 7 = 46000/7 ≈ 6571
     assert.ok(result > 5000);
     assert.ok(result < 10000);
+  });
+  test("シュリンクブレンドは days に上限を設けず avg に寄り続ける", () => {
+    // 旧実装は days を 6 で頭打ちしていたので、20 日と 6 日で同じ結果。
+    // 新実装では 20 日の方が avg に近くなる。
+    const six = blendExpected(10000, 0, 6);
+    const twenty = blendExpected(10000, 0, 20);
+    assert.ok(twenty > six, `${twenty} should be > ${six}`);
+    assert.ok(twenty < 10000);
+  });
+  test("computeLiveScore は +4000 円改善でも 1 点動く (旧 /12000 では 0)", () => {
+    // seedBlend = (10000*5 + 10000*2)/7 = 10000
+    // liveBlend = (15600*5 + 10000*2)/7 ≈ 14000
+    // delta ≈ +4000 → 新: round(4000/6000) = 1、旧: round(4000/12000) = 0
+    const record = normalizeRecord("辛亥", {
+      seedScore: 5,
+      seedAvg: 10000,
+      seedDays: 5,
+      sendan: 10000,
+      avg: 15600,
+      days: 5,
+      tags: []
+    });
+    assert.equal(computeLiveScore(record), 6);
   });
   test("getRating は閾値で tier が変わる", () => {
     assert.equal(getRating(9).tier, "perfect");

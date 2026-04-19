@@ -1248,8 +1248,7 @@ function getUpcomingDays(months) {
  */
 function getSummary(months) {
   const allDays = months.flatMap((month) => month.dayRows);
-  const { entries } = getDedupedAggregateEntries();
-  const lifetime = computeLifetimeStats(entries);
+  const lifetime = computeLifetimeStats();
   return {
     total: allDays.length,
     perfect: allDays.filter((day) => isPerfectRecord(day.record)).length,
@@ -1673,16 +1672,31 @@ function aggregateEntriesByDayOfMonth(entries = []) {
     }));
 }
 
-function computeLifetimeStats(entries = []) {
+function computeLifetimeStats() {
+  const profits = [];
+  // 元シートの過去履歴 (SEED_MONTHLY_ENTRIES) は日付を持たないが金額は記録されている。
+  // 全期間サマリーでは日数・合計・勝率に算入する。
+  for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
+    if (!Array.isArray(values)) continue;
+    for (const value of values) {
+      const profit = Number(value);
+      if (Number.isFinite(profit)) profits.push(profit);
+    }
+  }
+  // アプリ経由で追加された remote + local エントリ（重複排除済み）。
+  const { entries } = getDedupedAggregateEntries();
+  for (const entry of entries) {
+    const profit = Number(entry?.profit);
+    if (Number.isFinite(profit)) profits.push(profit);
+  }
+
   let total = 0;
   let days = 0;
   let wins = 0;
   let losses = 0;
   let best = null;
   let worst = null;
-  for (const entry of entries) {
-    const profit = Number(entry?.profit);
-    if (!Number.isFinite(profit)) continue;
+  for (const profit of profits) {
     total += profit;
     days += 1;
     if (profit > 0) wins += 1;
@@ -1863,7 +1877,7 @@ function renderLifetimeCards(lifetime) {
     : "is-neutral";
   return [
     buildSummaryCard("全期間 記録日数", `${lifetime.days}日`, `勝${lifetime.wins} / 負${lifetime.losses}`, "is-neutral"),
-    buildSummaryCard("全期間 累計", formatYen(lifetime.total), "記録のある日のみ", totalTone),
+    buildSummaryCard("全期間 累計", formatYen(lifetime.total), "シート履歴 + 追加記録", totalTone),
     buildSummaryCard("全期間 平均日次", formatYen(lifetime.avgDaily), "日あたり収支", avgTone),
     buildSummaryCard("全期間 勝率", lifetime.winRate === null ? "—" : `${lifetime.winRate}%`, `ベスト ${lifetime.best === null ? "—" : formatYen(lifetime.best)}`, winTone)
   ].join("");
