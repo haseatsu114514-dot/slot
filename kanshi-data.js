@@ -469,9 +469,10 @@ export function isPerfectRecord(record) {
 export function blendExpected(avg, sendan, days) {
   const forecast = toNumberOrNull(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
-  const actualWeight = Math.min(Math.max(days, 1), 6);
-  const forecastWeight = 1.5;
-  return ((avg * actualWeight) + (forecast * forecastWeight)) / (actualWeight + forecastWeight);
+  // シュリンクブレンド: sendan を k=2 の擬似サンプルとして混ぜ、
+  // 実績 days が増えるほど自然に avg 寄りになる。days 上限を設けない。
+  const k = 2;
+  return (avg * days + forecast * k) / (days + k);
 }
 
 export function clamp(value, min, max) {
@@ -518,7 +519,8 @@ export function applyQualityScoreCap(record, proposedScore) {
 export function computeLiveScore(record) {
   const seedBlend = blendExpected(record.seedAvg, record.sendan, record.seedDays);
   const liveBlend = blendExpected(record.avg, record.sendan, record.days);
-  const scoreShift = clamp(Math.round((liveBlend - seedBlend) / 12000), -3, 3);
+  // 6000 円の改善で ±1 点、±5 点まで動けるように刻みを細かく。
+  const scoreShift = clamp(Math.round((liveBlend - seedBlend) / 6000), -5, 5);
   const shiftedScore = clamp(record.seedScore + scoreShift, -6, 9);
   return applyQualityScoreCap(record, shiftedScore);
 }
