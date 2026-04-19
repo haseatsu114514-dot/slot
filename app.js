@@ -32,17 +32,21 @@ const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
 const STATS_SCOPE_STORAGE_KEY = "slot-kanshi-stats-scope-v1";
 const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
 const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
+const REMOTE_CACHE_KEY = "slot-kanshi-remote-cache-v1";
 const THEMES = ["dark", "sepia", "light"];
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
+const INITIAL_REMOTE_CACHE = loadRemoteCache();
 
 const state = {
-  remoteRecords: null,
-  remoteEntries: [],
+  remoteRecords: INITIAL_REMOTE_CACHE ? buildRecordsFromPayload(INITIAL_REMOTE_CACHE.records || {}) : null,
+  remoteEntries: INITIAL_REMOTE_CACHE && Array.isArray(INITIAL_REMOTE_CACHE.entries) ? INITIAL_REMOTE_CACHE.entries : [],
   localEntries: loadLocalEntries(),
   selectedDateKey: INITIAL_SELECTED_DATE_KEY,
   sync: {
     mode: CONFIG.syncEndpoint ? "loading" : "offline",
-    message: CONFIG.syncEndpoint ? "Google Sheets に接続しています..." : "シート未設定のため保留中です。"
+    message: CONFIG.syncEndpoint
+      ? (INITIAL_REMOTE_CACHE ? "前回の同期結果を表示中。最新を取得しています..." : "Google Sheets に接続しています...")
+      : "シート未設定のため保留中です。"
   },
   upcomingExpanded: false,
   calendarFilter: loadCalendarFilter(),
@@ -1130,6 +1134,33 @@ function persistLocalEntries() {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.localEntries));
 }
 
+function loadRemoteCache() {
+  try {
+    const raw = window.localStorage.getItem(REMOTE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed.records || typeof parsed.records !== "object") return null;
+    if (!Array.isArray(parsed.entries)) return null;
+    return parsed;
+  } catch (error) {
+    return null;
+  }
+}
+
+function persistRemoteCache(records, entries) {
+  try {
+    window.localStorage.setItem(
+      REMOTE_CACHE_KEY,
+      JSON.stringify({
+        records: records || {},
+        entries: Array.isArray(entries) ? entries : [],
+        cachedAt: new Date().toISOString()
+      })
+    );
+  } catch (error) { /* ignore quota/serialization issues */ }
+}
+
 function getSeedRecords() {
   return buildBaseRecords();
 }
@@ -1217,6 +1248,8 @@ function getUpcomingDays(months) {
  */
 function getSummary(months) {
   const allDays = months.flatMap((month) => month.dayRows);
+  const { entries } = getDedupedAggregateEntries();
+  const lifetime = computeLifetimeStats(entries);
   return {
     total: allDays.length,
     perfect: allDays.filter((day) => isPerfectRecord(day.record)).length,
@@ -1225,7 +1258,8 @@ function getSummary(months) {
     hold: allDays.filter((day) => day.record.score >= RATING_THRESHOLDS.holdMin && day.record.score < RATING_THRESHOLDS.goMin).length,
     avoid: allDays.filter((day) => day.record.score < RATING_THRESHOLDS.holdMin).length,
     kyuseiGood: allDays.filter((day) => Number(day.kyuseiContext?.adjustment) > 0).length,
-    kyuseiBad: allDays.filter((day) => Number(day.kyuseiContext?.adjustment) < 0).length
+    kyuseiBad: allDays.filter((day) => Number(day.kyuseiContext?.adjustment) < 0).length,
+    lifetime
   };
 }
 
@@ -1457,6 +1491,7 @@ function getActiveConfig() {
 
 function renderAggregates(records) {
   ensureKyuseiAggregateBlock();
+  ensureCalendarAggregateBlocks();
 
   const entriesMap = getAggregateEntriesMap();
   const { entries } = getDedupedAggregateEntries();
@@ -1464,6 +1499,8 @@ function renderAggregates(records) {
   const branchRows = aggregateByBranch(entriesMap);
   const elementRows = aggregateByElement(stemRows, branchRows);
   const kyuseiRows = aggregateEntriesByKyusei(entries);
+  const weekdayRows = aggregateEntriesByWeekday(entries);
+  const dayOfMonthRows = aggregateEntriesByDayOfMonth(entries);
   const ratingRows = aggregateByRatingTier(records);
 
   if (refs.stemTable) {
@@ -1478,8 +1515,57 @@ function renderAggregates(records) {
   if (refs.kyuseiTable) {
     refs.kyuseiTable.innerHTML = buildStemBranchTable(kyuseiRows, "九星");
   }
+  if (refs.weekdayTable) {
+    refs.weekdayTable.innerHTML = buildStemBranchTable(weekdayRows, "曜日");
+  }
+  if (refs.dayOfMonthTable) {
+    refs.dayOfMonthTable.innerHTML = dayOfMonthRows.length
+      ? buildStemBranchTable(dayOfMonthRows, "日")
+      : `<caption class="empty-caption">記録がまだありません。</caption>`;
+  }
   if (refs.ratingSummaryTable) {
     refs.ratingSummaryTable.innerHTML = buildRatingSummaryTable(ratingRows);
+  }
+}
+
+function ensureCalendarAggregateBlocks() {
+  const aggregateGrid = document.querySelector(".panel-aggregates .aggregate-grid");
+  if (!aggregateGrid) return;
+
+  if (!refs.weekdayTable || !document.body.contains(refs.weekdayTable)) {
+    const existing = document.getElementById("weekdayTable");
+    if (existing) {
+      refs.weekdayTable = existing;
+    } else {
+      const block = document.createElement("div");
+      block.className = "aggregate-block";
+      block.innerHTML = `
+        <h3 class="aggregate-title">曜日別 平均収支</h3>
+        <div class="aggregate-table-wrap">
+          <table class="aggregate-table weekday-table" id="weekdayTable"></table>
+        </div>
+      `;
+      aggregateGrid.appendChild(block);
+      refs.weekdayTable = block.querySelector("#weekdayTable");
+    }
+  }
+
+  if (!refs.dayOfMonthTable || !document.body.contains(refs.dayOfMonthTable)) {
+    const existing = document.getElementById("dayOfMonthTable");
+    if (existing) {
+      refs.dayOfMonthTable = existing;
+    } else {
+      const block = document.createElement("div");
+      block.className = "aggregate-block";
+      block.innerHTML = `
+        <h3 class="aggregate-title">日付別 平均収支（記録のある日のみ）</h3>
+        <div class="aggregate-table-wrap">
+          <table class="aggregate-table day-of-month-table" id="dayOfMonthTable"></table>
+        </div>
+      `;
+      aggregateGrid.appendChild(block);
+      refs.dayOfMonthTable = block.querySelector("#dayOfMonthTable");
+    }
   }
 }
 
@@ -1514,6 +1600,99 @@ function aggregateEntriesByKyusei(entries = []) {
     daily: row.days ? Math.round(row.total / row.days) : 0,
     hourly: row.days ? Math.round(row.total / row.days / 3.5) : 0
   }));
+}
+
+function aggregateEntriesByWeekday(entries = []) {
+  const rows = WEEKDAYS.map((label) => ({
+    key: label,
+    label: "",
+    wins: 0,
+    losses: 0,
+    total: 0,
+    days: 0,
+    daily: 0,
+    hourly: 0
+  }));
+
+  for (const entry of entries) {
+    const dateKey = normalizeTargetDate(entry?.targetDate);
+    if (!dateKey) continue;
+    const profit = Number(entry?.profit);
+    if (!Number.isFinite(profit)) continue;
+    const parts = dateKey.split("-").map((n) => parseInt(n, 10));
+    if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) continue;
+    const weekday = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12)).getUTCDay();
+    const row = rows[weekday];
+    if (!row) continue;
+    row.total += profit;
+    row.days += 1;
+    if (profit > 0) row.wins += 1;
+    if (profit < 0) row.losses += 1;
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    daily: row.days ? Math.round(row.total / row.days) : 0,
+    hourly: row.days ? Math.round(row.total / row.days / 3.5) : 0
+  }));
+}
+
+function aggregateEntriesByDayOfMonth(entries = []) {
+  const rows = Array.from({ length: 31 }, (_, i) => ({
+    key: String(i + 1),
+    label: "日",
+    wins: 0,
+    losses: 0,
+    total: 0,
+    days: 0,
+    daily: 0,
+    hourly: 0
+  }));
+
+  for (const entry of entries) {
+    const dateKey = normalizeTargetDate(entry?.targetDate);
+    if (!dateKey) continue;
+    const profit = Number(entry?.profit);
+    if (!Number.isFinite(profit)) continue;
+    const day = parseInt(dateKey.slice(8, 10), 10);
+    if (!Number.isFinite(day) || day < 1 || day > 31) continue;
+    const row = rows[day - 1];
+    if (!row) continue;
+    row.total += profit;
+    row.days += 1;
+    if (profit > 0) row.wins += 1;
+    if (profit < 0) row.losses += 1;
+  }
+
+  return rows
+    .filter((row) => row.days > 0)
+    .map((row) => ({
+      ...row,
+      daily: row.days ? Math.round(row.total / row.days) : 0,
+      hourly: row.days ? Math.round(row.total / row.days / 3.5) : 0
+    }));
+}
+
+function computeLifetimeStats(entries = []) {
+  let total = 0;
+  let days = 0;
+  let wins = 0;
+  let losses = 0;
+  let best = null;
+  let worst = null;
+  for (const entry of entries) {
+    const profit = Number(entry?.profit);
+    if (!Number.isFinite(profit)) continue;
+    total += profit;
+    days += 1;
+    if (profit > 0) wins += 1;
+    else if (profit < 0) losses += 1;
+    if (best === null || profit > best) best = profit;
+    if (worst === null || profit < worst) worst = profit;
+  }
+  const avgDaily = days > 0 ? Math.round(total / days) : 0;
+  const winRate = days > 0 ? Math.round((wins / days) * 100) : null;
+  return { days, total, wins, losses, avgDaily, winRate, best, worst };
 }
 
 function buildStemBranchTable(rows, headerLabel) {
@@ -1669,6 +1848,24 @@ function renderSummary(summary) {
     buildSummaryCard("× 見送り", summary.avoid, "スコア2以下", "is-avoid"),
     buildSummaryCard("九星追い風", summary.kyuseiGood, "+補正の日", "is-kyusei-good"),
     buildSummaryCard("九星注意", summary.kyuseiBad, "-補正の日", "is-kyusei-caution")
+  ].join("") + renderLifetimeCards(summary.lifetime);
+}
+
+function renderLifetimeCards(lifetime) {
+  if (!lifetime || lifetime.days <= 0) {
+    return buildSummaryCard("全期間 記録", 0, "記録がまだありません", "is-neutral");
+  }
+  const totalTone = lifetime.total > 0 ? "is-profit-plus" : lifetime.total < 0 ? "is-profit-minus" : "is-neutral";
+  const avgTone = lifetime.avgDaily > 0 ? "is-profit-plus" : lifetime.avgDaily < 0 ? "is-profit-minus" : "is-neutral";
+  const winTone = lifetime.winRate === null ? "is-neutral"
+    : lifetime.winRate >= 55 ? "is-profit-plus"
+    : lifetime.winRate <= 45 ? "is-profit-minus"
+    : "is-neutral";
+  return [
+    buildSummaryCard("全期間 記録日数", `${lifetime.days}日`, `勝${lifetime.wins} / 負${lifetime.losses}`, "is-neutral"),
+    buildSummaryCard("全期間 累計", formatYen(lifetime.total), "記録のある日のみ", totalTone),
+    buildSummaryCard("全期間 平均日次", formatYen(lifetime.avgDaily), "日あたり収支", avgTone),
+    buildSummaryCard("全期間 勝率", lifetime.winRate === null ? "—" : `${lifetime.winRate}%`, `ベスト ${lifetime.best === null ? "—" : formatYen(lifetime.best)}`, winTone)
   ].join("");
 }
 
@@ -2571,6 +2768,7 @@ async function hydrateRemoteDashboard(forceMessage = false) {
 
     state.remoteRecords = buildRecordsFromPayload(payload.records || {});
     state.remoteEntries = Array.isArray(payload.entries) ? payload.entries : [];
+    persistRemoteCache(payload.records || {}, state.remoteEntries);
     state.sync = {
       mode: "online",
       message: "Google Sheets と同期しています。"
@@ -2733,6 +2931,7 @@ async function postEntryToSheets(entry) {
 
   state.remoteRecords = buildRecordsFromPayload(payload.records || {});
   state.remoteEntries = Array.isArray(payload.entries) ? payload.entries : [];
+  persistRemoteCache(payload.records || {}, state.remoteEntries);
   state.sync = {
     mode: "online",
     message: "Google Sheets と同期しています。"
