@@ -425,17 +425,17 @@ a {
 
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 6px;
 }
 
 .summary-card {
-  padding: 12px 10px;
-  border-radius: 14px;
+  padding: 8px 9px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -486,18 +486,39 @@ a {
 .summary-label,
 .summary-note {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .summary-value {
-  font-size: 1.55rem;
-  font-weight: 900;
-  line-height: 1;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (min-width: 720px) {
   .summary-value {
-    font-size: 1.9rem;
+    font-size: 1.3rem;
+  }
+}
+
+/* 金額 (全期間 累計/平均) は桁が多いので少し小さめに固定 */
+.summary-card.is-profit-plus .summary-value,
+.summary-card.is-profit-minus .summary-value {
+  font-size: 1rem;
+}
+
+@media (min-width: 720px) {
+  .summary-card.is-profit-plus .summary-value,
+  .summary-card.is-profit-minus .summary-value {
+    font-size: 1.1rem;
   }
 }
 
