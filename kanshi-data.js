@@ -298,6 +298,56 @@ export function getKanshiForDateKey(dateKey, config = DEFAULT_CONFIG) {
   return SEXAGENARY_CYCLE[cycleIndex];
 }
 
+// 月 + 干支 から 1 日を特定する。60 干支は 60 日周期で、1 か月 (≤31 日) 内に
+// 同じ干支は最大 1 回しか現れないため、年が特定できれば (月, 干支) で一意に決まる。
+// year が無指定の場合は referenceDateKey から過去に遡り、最も直近のマッチ日を返す。
+export function findDateForMonthKanshi(year, month, kanshi, options = {}) {
+  const config = options.config || DEFAULT_CONFIG;
+  const referenceKey = options.referenceDateKey || config.anchorDate;
+  const maxLookbackMonths = Number.isFinite(options.maxLookbackMonths)
+    ? options.maxLookbackMonths
+    : 48;
+
+  const kanshiIndex = SEXAGENARY_CYCLE.indexOf(kanshi);
+  if (kanshiIndex < 0) return "";
+  const m = Number(month);
+  if (!Number.isFinite(m) || m < 1 || m > 12) return "";
+
+  const anchorIndex = SEXAGENARY_CYCLE.indexOf(config.anchorKanshi);
+  const anchorDate = parseDateKey(config.anchorDate);
+
+  const matchInYearMonth = (candYear, candMonth, upperBoundMs) => {
+    const daysInMonth = getDaysInMonth(candYear, candMonth);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = toUtcDate(candYear, candMonth, day);
+      if (upperBoundMs !== undefined && date.getTime() > upperBoundMs) continue;
+      const diff = Math.round((date.getTime() - anchorDate.getTime()) / 86400000);
+      const cycleIndex = mod(anchorIndex + diff, SEXAGENARY_CYCLE.length);
+      if (cycleIndex === kanshiIndex) return formatDateKey(date);
+    }
+    return "";
+  };
+
+  const y = Number(year);
+  if (Number.isFinite(y) && y >= 1900 && y <= 2200) {
+    return matchInYearMonth(y, m);
+  }
+
+  const reference = parseDateKey(referenceKey);
+  const refMs = reference.getTime();
+  const startYear = reference.getUTCFullYear();
+  const startMonthIndex = reference.getUTCMonth();
+  for (let offset = 0; offset <= maxLookbackMonths; offset += 1) {
+    const totalMonth = startMonthIndex - offset;
+    const candYear = startYear + Math.floor(totalMonth / 12);
+    const candMonth = mod(totalMonth, 12) + 1;
+    if (candMonth !== m) continue;
+    const match = matchInYearMonth(candYear, candMonth, refMs);
+    if (match) return match;
+  }
+  return "";
+}
+
 export function getMonthSequence(startMonth, count) {
   const [yearText, monthText] = startMonth.split("-");
   const startYear = Number(yearText);

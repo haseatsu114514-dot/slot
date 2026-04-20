@@ -32,7 +32,8 @@ import {
   getKichoDirections,
   getKyuseiForDateKey,
   aggregateByKyusei,
-  getKyuseiPerformanceContext
+  getKyuseiPerformanceContext,
+  findDateForMonthKanshi
 } from "../kanshi-data.js";
 
 let passed = 0;
@@ -150,6 +151,43 @@ suite("干支計算", () => {
   });
   test("60日前も同じ干支", () => {
     assert.equal(getKanshiForDateKey("2026-02-06"), "辛亥");
+  });
+});
+
+suite("findDateForMonthKanshi", () => {
+  test("年指定あり: 2026年4月の辛亥 → 2026-04-07", () => {
+    assert.equal(findDateForMonthKanshi(2026, 4, "辛亥"), "2026-04-07");
+  });
+  test("年指定あり: 2026年6月の辛亥 → 2026-06-06 (60日後)", () => {
+    assert.equal(findDateForMonthKanshi(2026, 6, "辛亥"), "2026-06-06");
+  });
+  test("年指定あり: マッチなしなら空文字", () => {
+    // 2026年5月には辛亥は存在しない (4月と6月のみ)
+    assert.equal(findDateForMonthKanshi(2026, 5, "辛亥"), "");
+  });
+  test("存在しない干支なら空文字", () => {
+    assert.equal(findDateForMonthKanshi(2026, 4, "存在しない干支"), "");
+  });
+  test("月が範囲外なら空文字", () => {
+    assert.equal(findDateForMonthKanshi(2026, 13, "辛亥"), "");
+    assert.equal(findDateForMonthKanshi(2026, 0, "辛亥"), "");
+  });
+  test("年指定なし: reference から直近のマッチ日を返す", () => {
+    // 2026-05-01 より前で最も近い辛亥 → 2026-04-07
+    assert.equal(
+      findDateForMonthKanshi(null, 4, "辛亥", { referenceDateKey: "2026-05-01" }),
+      "2026-04-07"
+    );
+  });
+  test("年指定なし: reference が 4月6日なら前年4月を探す", () => {
+    // 2026-04-06 時点で 4月の辛亥はまだ未来 → 1つ前の4月 (2025年) を探す
+    // 2026-04-07 から 60 日周期で逆算: 2026-02-06 → 2025-12-08 → ... → 2025 年4月のどこかに辛亥が出現するはず
+    const result = findDateForMonthKanshi(null, 4, "辛亥", {
+      referenceDateKey: "2026-04-06"
+    });
+    assert.match(result, /^\d{4}-04-\d{2}$/);
+    assert.equal(getKanshiForDateKey(result), "辛亥");
+    assert.ok(result < "2026-04-06");
   });
 });
 

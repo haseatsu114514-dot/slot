@@ -32,7 +32,7 @@ const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
 const STATS_SCOPE_STORAGE_KEY = "slot-kanshi-stats-scope-v1";
 const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
 const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
-const REMOTE_CACHE_KEY = "slot-kanshi-remote-cache-v1";
+const REMOTE_CACHE_KEY = "slot-kanshi-remote-cache-v2";
 const THEMES = ["dark", "sepia", "light"];
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
 const INITIAL_REMOTE_CACHE = loadRemoteCache();
@@ -40,6 +40,9 @@ const INITIAL_REMOTE_CACHE = loadRemoteCache();
 const state = {
   remoteRecords: INITIAL_REMOTE_CACHE ? buildRecordsFromPayload(INITIAL_REMOTE_CACHE.records || {}) : null,
   remoteEntries: INITIAL_REMOTE_CACHE && Array.isArray(INITIAL_REMOTE_CACHE.entries) ? INITIAL_REMOTE_CACHE.entries : [],
+  historicalEntries: INITIAL_REMOTE_CACHE && Array.isArray(INITIAL_REMOTE_CACHE.historicalEntries)
+    ? INITIAL_REMOTE_CACHE.historicalEntries
+    : [],
   localEntries: loadLocalEntries(),
   selectedDateKey: INITIAL_SELECTED_DATE_KEY,
   sync: {
@@ -1142,19 +1145,21 @@ function loadRemoteCache() {
     if (!parsed || typeof parsed !== "object") return null;
     if (!parsed.records || typeof parsed.records !== "object") return null;
     if (!Array.isArray(parsed.entries)) return null;
+    if (!Array.isArray(parsed.historicalEntries)) parsed.historicalEntries = [];
     return parsed;
   } catch (error) {
     return null;
   }
 }
 
-function persistRemoteCache(records, entries) {
+function persistRemoteCache(records, entries, historicalEntries) {
   try {
     window.localStorage.setItem(
       REMOTE_CACHE_KEY,
       JSON.stringify({
         records: records || {},
         entries: Array.isArray(entries) ? entries : [],
+        historicalEntries: Array.isArray(historicalEntries) ? historicalEntries : [],
         cachedAt: new Date().toISOString()
       })
     );
@@ -1406,9 +1411,11 @@ function normalizeTargetDate(value) {
 
 function getDedupedAggregateEntries() {
   const hasRemote = Array.isArray(state.remoteEntries) && state.remoteEntries.length > 0;
-  const source = hasRemote
-    ? [...state.remoteEntries, ...state.localEntries]
-    : [...state.localEntries];
+  const historical = Array.isArray(state.historicalEntries) ? state.historicalEntries : [];
+  const hasHistorical = historical.length > 0;
+  // 優先度: localEntries > remoteEntries > historicalEntries。
+  // 同じ日付があれば新しい入力で上書きする。
+  const source = [...historical, ...(hasRemote ? state.remoteEntries : []), ...state.localEntries];
 
   // targetDate をキーに重複排除。createdAt が新しい方を優先。
   const map = new Map();
@@ -1424,13 +1431,21 @@ function getDedupedAggregateEntries() {
       map.set(key, entry);
       continue;
     }
+    // 履歴 (source: "history") は最下位優先、ユーザー入力を優先。
+    const existingIsHistory = existing.source === "history";
+    const incomingIsHistory = entry.source === "history";
+    if (existingIsHistory && !incomingIsHistory) {
+      map.set(key, entry);
+      continue;
+    }
+    if (!existingIsHistory && incomingIsHistory) continue;
     const incomingCreated = String(entry.createdAt || "");
     const existingCreated = String(existing.createdAt || "");
     if (incomingCreated.localeCompare(existingCreated) > 0) {
       map.set(key, entry);
     }
   }
-  return { entries: Array.from(map.values()), hasRemote };
+  return { entries: Array.from(map.values()), hasRemote, hasHistorical };
 }
 
 function getAggregateEntriesMap() {
@@ -1674,17 +1689,19 @@ function aggregateEntriesByDayOfMonth(entries = []) {
 
 function computeLifetimeStats() {
   const profits = [];
-  // 元シートの過去履歴 (SEED_MONTHLY_ENTRIES) は日付を持たないが金額は記録されている。
-  // 全期間サマリーでは日数・合計・勝率に算入する。
-  for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
-    if (!Array.isArray(values)) continue;
-    for (const value of values) {
-      const profit = Number(value);
-      if (Number.isFinite(profit)) profits.push(profit);
+  const { entries, hasHistorical } = getDedupedAggregateEntries();
+  // historicalEntries が来ていれば、シート由来の履歴は entries 側に日付付きで
+  // 含まれているので SEED_MONTHLY_ENTRIES との重複を避ける。
+  // 来ていなければ従来通り SEED_MONTHLY_ENTRIES のフラット値から日数・合計・勝率を算出。
+  if (!hasHistorical) {
+    for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
+      if (!Array.isArray(values)) continue;
+      for (const value of values) {
+        const profit = Number(value);
+        if (Number.isFinite(profit)) profits.push(profit);
+      }
     }
   }
-  // アプリ経由で追加された remote + local エントリ（重複排除済み）。
-  const { entries } = getDedupedAggregateEntries();
   for (const entry of entries) {
     const profit = Number(entry?.profit);
     if (Number.isFinite(profit)) profits.push(profit);
@@ -2782,7 +2799,8 @@ async function hydrateRemoteDashboard(forceMessage = false) {
 
     state.remoteRecords = buildRecordsFromPayload(payload.records || {});
     state.remoteEntries = Array.isArray(payload.entries) ? payload.entries : [];
-    persistRemoteCache(payload.records || {}, state.remoteEntries);
+    state.historicalEntries = Array.isArray(payload.historicalEntries) ? payload.historicalEntries : [];
+    persistRemoteCache(payload.records || {}, state.remoteEntries, state.historicalEntries);
     state.sync = {
       mode: "online",
       message: "Google Sheets と同期しています。"
@@ -2945,7 +2963,10 @@ async function postEntryToSheets(entry) {
 
   state.remoteRecords = buildRecordsFromPayload(payload.records || {});
   state.remoteEntries = Array.isArray(payload.entries) ? payload.entries : [];
-  persistRemoteCache(payload.records || {}, state.remoteEntries);
+  if (Array.isArray(payload.historicalEntries)) {
+    state.historicalEntries = payload.historicalEntries;
+  }
+  persistRemoteCache(payload.records || {}, state.remoteEntries, state.historicalEntries);
   state.sync = {
     mode: "online",
     message: "Google Sheets と同期しています。"

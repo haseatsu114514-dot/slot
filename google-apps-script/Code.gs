@@ -5,6 +5,7 @@ const CONFIG = Object.freeze({
   ANCHOR_KANSHI: "辛亥",
   DEFAULT_MASTER_SHEET: "干支マスタ",
   DEFAULT_RESULTS_SHEET: "実績入力",
+  DEFAULT_HISTORY_SHEET: "六十干支",
   MASTER_HEADER: ["干支", "通変星", "初期スコア", "平均収支", "日数", "占断予想", "タグ"],
   RESULTS_HEADER: ["ID", "記録日時", "対象日", "干支", "収支", "店舗", "機種", "メモ"],
   HEAVENLY_STEMS: ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"],
@@ -167,6 +168,8 @@ function buildDashboard_() {
       return String(right.createdAt).localeCompare(String(left.createdAt));
     });
 
+  const historicalEntries = readHistoricalEntries_();
+
   return {
     ok: true,
     config: {
@@ -175,6 +178,7 @@ function buildDashboard_() {
     },
     records: records,
     entries: enrichedEntries,
+    historicalEntries: historicalEntries,
     syncedAt: new Date().toISOString()
   };
 }
@@ -201,6 +205,124 @@ function readMasterRecords_() {
     });
   });
   return base;
+}
+
+// 「六十干支」タブ (月 + 干支 + 収支) から過去履歴を読み、kanshi サイクルから
+// 日付を逆算して { targetDate, kanshi, profit, source: "history" } の配列を返す。
+// タブが存在しない / ヘッダが見つからない場合は空配列。
+function readHistoricalEntries_() {
+  const name = PROP.getProperty("HISTORY_SHEET_NAME") || CONFIG.DEFAULT_HISTORY_SHEET;
+  const spreadsheet = getSpreadsheet_();
+  const sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) return [];
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+
+  const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var yearCol = -1;
+  var monthCol = -1;
+  var kanshiCol = -1;
+  var profitCol = -1;
+  headerRow.forEach(function(cell, i) {
+    const text = String(cell || "").trim();
+    if (!text) return;
+    if (yearCol < 0 && /年/.test(text) && !/月/.test(text)) yearCol = i;
+    if (monthCol < 0 && /月/.test(text)) monthCol = i;
+    if (kanshiCol < 0 && (/干支/.test(text) || /六十/.test(text))) kanshiCol = i;
+    if (profitCol < 0 && /(収支|profit|金額|収益|差枚|勝ち|負け|pay)/i.test(text)) profitCol = i;
+  });
+  if (monthCol < 0) monthCol = 0;
+  if (kanshiCol < 0) kanshiCol = Math.min(1, lastCol - 1);
+  if (profitCol < 0) profitCol = Math.min(2, lastCol - 1);
+
+  const rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const todayKey = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy-MM-dd");
+  const out = [];
+  rows.forEach(function(row, i) {
+    const kanshi = String(row[kanshiCol] || "").trim();
+    if (!kanshi || SEXAGENARY_CYCLE.indexOf(kanshi) < 0) return;
+    const profit = Number(row[profitCol]);
+    if (!Number.isFinite(profit)) return;
+    const month = parseMonthCell_(row[monthCol]);
+    if (!month) return;
+    const year = yearCol >= 0 ? parseYearCell_(row[yearCol]) : 0;
+    const targetDate = findDateForMonthKanshi_(year, month, kanshi, todayKey);
+    if (!targetDate) return;
+    out.push({
+      id: "history-" + (i + 1),
+      createdAt: "",
+      targetDate: targetDate,
+      kanshi: kanshi,
+      profit: profit,
+      store: "",
+      machine: "",
+      memo: "",
+      source: "history"
+    });
+  });
+  return out;
+}
+
+function parseMonthCell_(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (Object.prototype.toString.call(value) === "[object Date]") return value.getMonth() + 1;
+  const match = String(value).match(/(\d{1,2})/);
+  if (!match) return 0;
+  const n = parseInt(match[1], 10);
+  return n >= 1 && n <= 12 ? n : 0;
+}
+
+function parseYearCell_(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (Object.prototype.toString.call(value) === "[object Date]") return value.getFullYear();
+  const match = String(value).match(/(\d{4})/);
+  if (!match) return 0;
+  return parseInt(match[1], 10);
+}
+
+function findDateForMonthKanshi_(year, month, kanshi, referenceKey) {
+  const kanshiIndex = SEXAGENARY_CYCLE.indexOf(kanshi);
+  if (kanshiIndex < 0) return "";
+  const m = Number(month);
+  if (!Number.isFinite(m) || m < 1 || m > 12) return "";
+
+  const anchorIndex = SEXAGENARY_CYCLE.indexOf(CONFIG.ANCHOR_KANSHI);
+  const anchorDate = parseDateKey_(CONFIG.ANCHOR_DATE);
+
+  function matchInYearMonth(candYear, candMonth, upperBoundMs) {
+    const daysInMonth = new Date(Date.UTC(candYear, candMonth, 0, 12)).getUTCDate();
+    for (var d = 1; d <= daysInMonth; d += 1) {
+      const date = new Date(Date.UTC(candYear, candMonth - 1, d, 12));
+      if (upperBoundMs !== undefined && date.getTime() > upperBoundMs) continue;
+      const diff = Math.round((date.getTime() - anchorDate.getTime()) / 86400000);
+      const cycleIdx = mod_(anchorIndex + diff, 60);
+      if (cycleIdx === kanshiIndex) {
+        return Utilities.formatDate(date, "Asia/Tokyo", "yyyy-MM-dd");
+      }
+    }
+    return "";
+  }
+
+  const y = Number(year);
+  if (Number.isFinite(y) && y >= 1900 && y <= 2200) {
+    return matchInYearMonth(y, m);
+  }
+
+  const reference = parseDateKey_(referenceKey || CONFIG.ANCHOR_DATE);
+  const refMs = reference.getTime();
+  const startYear = reference.getUTCFullYear();
+  const startMonthIndex = reference.getUTCMonth();
+  for (var offset = 0; offset <= 48; offset += 1) {
+    const totalMonth = startMonthIndex - offset;
+    const candYear = startYear + Math.floor(totalMonth / 12);
+    const candMonth = mod_(totalMonth, 12) + 1;
+    if (candMonth !== m) continue;
+    const match = matchInYearMonth(candYear, candMonth, refMs);
+    if (match) return match;
+  }
+  return "";
 }
 
 function readResultEntries_() {
