@@ -859,6 +859,51 @@ export function buildEntriesMap(seedEntries = SEED_MONTHLY_ENTRIES, extraEntries
   return map;
 }
 
+// SEED_MONTHLY_ENTRIES は日付情報を持たないので、九星/曜日/日付別の集計に取り込めない。
+// 各干支について「参照日より前の最近 N 回の出現日」を割り当て、合成エントリとして返す。
+// excludeDates に既に実エントリのある (kanshi, dateKey) ペアを渡すと重複を避ける。
+export function buildPastSeedEntries(
+  seedEntries = SEED_MONTHLY_ENTRIES,
+  referenceDateKey,
+  config = DEFAULT_CONFIG,
+  excludeDates = null
+) {
+  if (!referenceDateKey) return [];
+  const exclude = excludeDates instanceof Set ? excludeDates : new Set();
+  const result = [];
+  const refDate = parseDateKey(referenceDateKey);
+
+  for (const [kanshi, rawValues] of Object.entries(seedEntries || {})) {
+    if (!Array.isArray(rawValues) || rawValues.length === 0) continue;
+    const values = rawValues.filter((v) => Number.isFinite(Number(v))).map((v) => Number(v));
+    if (values.length === 0) continue;
+
+    const dates = [];
+    const cursor = new Date(refDate.getTime());
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    let safety = 0;
+    const maxSteps = 60 * values.length + 120;
+    while (dates.length < values.length && safety < maxSteps) {
+      const cursorKey = formatDateKey(cursor);
+      if (getKanshiForDateKey(cursorKey, config) === kanshi) {
+        if (!exclude.has(`${kanshi}|${cursorKey}`)) {
+          dates.push(cursorKey);
+        }
+        cursor.setUTCDate(cursor.getUTCDate() - 60);
+      } else {
+        cursor.setUTCDate(cursor.getUTCDate() - 1);
+      }
+      safety += 1;
+    }
+
+    for (let i = 0; i < dates.length; i += 1) {
+      result.push({ kanshi, targetDate: dates[i], profit: values[i], synthetic: true });
+    }
+  }
+
+  return result;
+}
+
 function aggregateValues(values = []) {
   let wins = 0;
   let losses = 0;
@@ -1084,25 +1129,44 @@ export function aggregateByRatingTier(records) {
     const entries = Object.values(records).filter(tier.filter);
     const count = entries.length;
     if (count === 0) {
-      return { key: tier.key, label: tier.label, count: 0, avgActual: null, avgSendan: null, avgExpected: null };
+      return { key: tier.key, label: tier.label, count: 0, avgActual: null, avgSendan: null, avgExpected: null, totalDays: 0 };
     }
 
-    const actualList = entries
-      .map((entry) => entry.avg)
-      .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
-    const sendanList = entries
-      .map((entry) => entry.sendan)
-      .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
-    const expectedList = entries.map((entry) => blendExpected(entry.avg, entry.sendan, entry.days || 0));
-    const mean = (list) => (list.length ? Math.round(list.reduce((sum, value) => sum + value, 0) / list.length) : null);
+    // 実績平均: avg × days を合算した「総収支 / 総日数」(過去サンプルの多い干支ほど重みが大きくなる)。
+    let actualSum = 0;
+    let actualDays = 0;
+    let expectedWeighted = 0;
+    let expectedWeight = 0;
+    let sendanSum = 0;
+    let sendanCount = 0;
+    for (const entry of entries) {
+      const days = Math.max(0, toNumberOrNull(entry?.days, 0));
+      const avg = toNumberOrNull(entry?.avg, null);
+      if (avg !== null && days > 0) {
+        actualSum += avg * days;
+        actualDays += days;
+      }
+      const sendan = toNumberOrNull(entry?.sendan, null);
+      if (sendan !== null) {
+        sendanSum += sendan;
+        sendanCount += 1;
+      }
+      const expected = blendExpected(avg, sendan, days);
+      if (Number.isFinite(expected)) {
+        const w = days > 0 ? days : 1;
+        expectedWeighted += expected * w;
+        expectedWeight += w;
+      }
+    }
 
     return {
       key: tier.key,
       label: tier.label,
       count,
-      avgActual: mean(actualList),
-      avgSendan: mean(sendanList),
-      avgExpected: mean(expectedList)
+      avgActual: actualDays > 0 ? Math.round(actualSum / actualDays) : null,
+      avgSendan: sendanCount > 0 ? Math.round(sendanSum / sendanCount) : null,
+      avgExpected: expectedWeight > 0 ? Math.round(expectedWeighted / expectedWeight) : null,
+      totalDays: actualDays
     };
   });
 }

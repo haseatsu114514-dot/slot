@@ -32,7 +32,10 @@ import {
   getKichoDirections,
   getKyuseiForDateKey,
   aggregateByKyusei,
-  getKyuseiPerformanceContext
+  getKyuseiPerformanceContext,
+  aggregateByRatingTier,
+  buildPastSeedEntries,
+  SEED_MONTHLY_ENTRIES
 } from "../kanshi-data.js";
 
 let passed = 0;
@@ -351,6 +354,67 @@ suite("九星補正", () => {
     assert.ok(info.kyuseiContext);
     assert.equal(info.record.kyuseiAdjustment, info.kyuseiContext.adjustment);
     assert.equal(info.kyusei.number, info.kyuseiContext.kyusei.number);
+  });
+});
+
+suite("過去サンプルの合成", () => {
+  test("buildPastSeedEntries は各干支の過去出現日に値を割り当てる", () => {
+    const refKey = "2026-04-21";
+    const synthetic = buildPastSeedEntries(SEED_MONTHLY_ENTRIES, refKey);
+
+    // 全エントリ数 = SEED_MONTHLY_ENTRIES の値の総数
+    let expectedCount = 0;
+    for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
+      expectedCount += Array.isArray(values) ? values.length : 0;
+    }
+    assert.equal(synthetic.length, expectedCount);
+
+    // すべての date は参照日より前
+    for (const entry of synthetic) {
+      assert.ok(entry.targetDate < refKey, `${entry.targetDate} should be before ${refKey}`);
+    }
+
+    // 壬子 のエントリがちゃんと壬子日に割り当てられている
+    const nezuEntries = synthetic.filter((e) => e.kanshi === "壬子");
+    assert.equal(nezuEntries.length, SEED_MONTHLY_ENTRIES["壬子"].length);
+    for (const e of nezuEntries) {
+      assert.equal(getKanshiForDateKey(e.targetDate), "壬子");
+    }
+  });
+
+  test("buildPastSeedEntries は excludeDates に指定したペアを避ける", () => {
+    const refKey = "2026-04-21";
+    // 直近の 壬子 = 2026-04-08 を除外
+    const exclude = new Set(["壬子|2026-04-08"]);
+    const synthetic = buildPastSeedEntries(SEED_MONTHLY_ENTRIES, refKey, undefined, exclude);
+    const nezu = synthetic.filter((e) => e.kanshi === "壬子");
+    assert.ok(nezu.every((e) => e.targetDate !== "2026-04-08"));
+  });
+});
+
+suite("評価別 平均収支の加重", () => {
+  test("aggregateByRatingTier は days で重み付けした実績平均を返す", () => {
+    const records = {
+      A: { score: 6, days: 1, avg: 1000, sendan: 0 },
+      B: { score: 6, days: 9, avg: 11000, sendan: 0 }
+    };
+    const rows = aggregateByRatingTier(records);
+    const goRow = rows.find((row) => row.key === "go");
+    // 単純平均 (1000+11000)/2 = 6000 ではなく、
+    // 加重平均 (1000*1 + 11000*9) / (1+9) = 10000
+    assert.equal(goRow.avgActual, 10000);
+    assert.equal(goRow.totalDays, 10);
+    assert.equal(goRow.count, 2);
+  });
+
+  test("aggregateByRatingTier は実績ゼロの tier で avgActual=null を返す", () => {
+    const records = {
+      A: { score: -3, days: 0, avg: null, sendan: 0 }
+    };
+    const rows = aggregateByRatingTier(records);
+    const avoidRow = rows.find((row) => row.key === "avoid");
+    assert.equal(avoidRow.avgActual, null);
+    assert.equal(avoidRow.count, 1);
   });
 });
 

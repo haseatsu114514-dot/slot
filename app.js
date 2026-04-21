@@ -22,9 +22,10 @@ import {
   aggregateByBranch,
   aggregateByElement,
   aggregateByRatingTier,
+  buildPastSeedEntries,
   SEED_MONTHLY_ENTRIES,
   KYUSEI_NAMES
-} from "./kanshi-data.js?v=20260416d";
+} from "./kanshi-data.js?v=20260417b";
 
 const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
@@ -1454,6 +1455,20 @@ function getAggregateEntriesMap() {
   return buildEntriesMap(SEED_MONTHLY_ENTRIES, entries);
 }
 
+// 九星/曜日/日付別の集計用に、SEED_MONTHLY_ENTRIES の各値へ
+// 「最近の過去出現日」を割り当てた合成エントリを足す。
+// 既に実エントリがある (kanshi, dateKey) は除外して二重計上を防ぐ。
+function mergeWithPastSeedEntries(realEntries = []) {
+  const referenceDateKey = getTodayDateKey();
+  const exclude = new Set();
+  for (const entry of realEntries) {
+    const dateKey = normalizeTargetDate(entry?.targetDate);
+    if (entry?.kanshi && dateKey) exclude.add(`${entry.kanshi}|${dateKey}`);
+  }
+  const synthetic = buildPastSeedEntries(SEED_MONTHLY_ENTRIES, referenceDateKey, CONFIG, exclude);
+  return [...realEntries, ...synthetic];
+}
+
 // 過去成績から「カレンダー月ごとの得意/苦手」を算出する。
 // 各月の平均収支を全体平均と比較し、差分に応じて -0.6 〜 +0.6 の補正を付ける。
 // データが少ない月 (2日未満) はニュートラル扱い。
@@ -1507,12 +1522,16 @@ function renderAggregates(records) {
 
   const entriesMap = getAggregateEntriesMap();
   const { entries } = getDedupedAggregateEntries();
+  // 過去履歴 (SEED_MONTHLY_ENTRIES) は日付を持たないので、
+  // 各干支の最近の過去出現日を割り当てた合成エントリを足して、
+  // 九星/曜日/日付別の集計にも過去サンプルが乗るようにする。
   const stemRows = aggregateByStem(entriesMap);
   const branchRows = aggregateByBranch(entriesMap);
   const elementRows = aggregateByElement(stemRows, branchRows);
-  const kyuseiRows = aggregateEntriesByKyusei(entries);
-  const weekdayRows = aggregateEntriesByWeekday(entries);
-  const dayOfMonthRows = aggregateEntriesByDayOfMonth(entries);
+  const calendarEntries = mergeWithPastSeedEntries(entries);
+  const kyuseiRows = aggregateEntriesByKyusei(calendarEntries);
+  const weekdayRows = aggregateEntriesByWeekday(calendarEntries);
+  const dayOfMonthRows = aggregateEntriesByDayOfMonth(calendarEntries);
   const ratingRows = aggregateByRatingTier(records);
 
   if (refs.stemTable) {
