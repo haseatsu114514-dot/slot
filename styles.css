@@ -490,13 +490,10 @@ a {
 }
 
 .summary-value {
-  font-size: clamp(0.95rem, 3.8vw, 1.4rem);
+  font-size: clamp(0.75rem, 3.2vw, 1.4rem);
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 @media (min-width: 720px) {
