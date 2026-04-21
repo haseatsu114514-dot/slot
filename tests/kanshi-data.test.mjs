@@ -171,10 +171,10 @@ suite("blendExpected / 評価", () => {
     assert.ok(twenty > six, `${twenty} should be > ${six}`);
     assert.ok(twenty < 10000);
   });
-  test("computeLiveScore は +4000 円改善でも 1 点動く (旧 /12000 では 0)", () => {
-    // seedBlend = (10000*5 + 10000*2)/7 = 10000
-    // liveBlend = (15600*5 + 10000*2)/7 ≈ 14000
-    // delta ≈ +4000 → 新: round(4000/6000) = 1、旧: round(4000/12000) = 0
+  test("computeLiveScore は +4000 円改善でも shift と data-driven blend で動く", () => {
+    // seed と live で +4000 円のずれ → seedBased = 5+1 = 6
+    // dataDriven (avg=15600) = 7、days=5 で dataWeight = 5/9 ≈ 0.556
+    // blended = round(6*0.444 + 7*0.556) = round(6.556) = 7
     const record = normalizeRecord("辛亥", {
       seedScore: 5,
       seedAvg: 10000,
@@ -184,7 +184,42 @@ suite("blendExpected / 評価", () => {
       days: 5,
       tags: []
     });
-    assert.equal(computeLiveScore(record), 6);
+    assert.equal(computeLiveScore(record), 7);
+  });
+  test("seedScore が低くても avg が高ければ days に応じて引き上がる", () => {
+    // 庚子 のような「seedScore=4, avg=21333, days=3」想定
+    // dataDriven = 8 (avg>=18000), seedBased = 4 + (差 / 6000) ≈ 4
+    // days=3 → dataWeight = 3/7 ≈ 0.429
+    // blended = round(4*0.571 + 8*0.429) ≈ round(5.71) = 6
+    // sendan=8293 で sendan_cap=7、avg-sendan=13040 かつ days<5 なので緩和なし → 6 に着地
+    const record = normalizeRecord("庚子", {
+      seedScore: 4,
+      seedAvg: 21333,
+      seedDays: 3,
+      sendan: 8293,
+      avg: 21333,
+      days: 3,
+      tags: []
+    });
+    const score = computeLiveScore(record);
+    assert.ok(score >= 5, `expected uplift to >= 5, got ${score}`);
+  });
+  test("days が増えるほどデータ駆動寄りになる (同じ avg でも score が上がる)", () => {
+    const make = (days) => normalizeRecord("X", {
+      seedScore: 2, seedAvg: 14000, seedDays: 1,
+      sendan: 14000, avg: 14000, days, tags: []
+    });
+    const few = computeLiveScore(make(2));
+    const many = computeLiveScore(make(15));
+    assert.ok(many > few, `days=15 (${many}) should beat days=2 (${few})`);
+  });
+  test("sendan が低くても avg が大きく上回り days>=5 なら sendan cap が緩和される", () => {
+    // 旧: sendan=4000 → cap=6 で頭打ち。新: avg-sendan>8000 かつ days>=5 で cap=7。
+    const record = normalizeRecord("X", {
+      seedScore: 9, seedAvg: 25000, seedDays: 5,
+      sendan: 4000, avg: 20000, days: 6, tags: []
+    });
+    assert.ok(computeLiveScore(record) >= 7, "cap should expand from 6 to 7");
   });
   test("getRating は閾値で tier が変わる", () => {
     assert.equal(getRating(9).tier, "perfect");

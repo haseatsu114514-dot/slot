@@ -499,10 +499,17 @@ export function getQualityScoreCap(record) {
   else if (avg < 12000) cap = Math.min(cap, 7);
   else if (avg < 20000) cap = Math.min(cap, 8);
 
-  if (sendan < 0) cap = Math.min(cap, 4);
-  else if (sendan < 5000) cap = Math.min(cap, 6);
-  else if (sendan < 10000) cap = Math.min(cap, 7);
-  else if (sendan < 18000) cap = Math.min(cap, 8);
+  let sendanCap = 9;
+  if (sendan < 0) sendanCap = 4;
+  else if (sendan < 5000) sendanCap = 6;
+  else if (sendan < 10000) sendanCap = 7;
+  else if (sendan < 18000) sendanCap = 8;
+
+  // 占断が弱気でも実績が明確に上回り、サンプルもある場合は sendan 由来の cap を緩和。
+  // 「占断はパッとしないが実績で打てると確認済み」な干支を天井に当てない。
+  if (avg !== null && days >= 5 && avg > sendan + 8000) sendanCap = Math.min(9, sendanCap + 1);
+  if (avg !== null && days >= 8 && avg > sendan + 14000) sendanCap = Math.min(9, sendanCap + 1);
+  cap = Math.min(cap, sendanCap);
 
   if (days <= 1) cap = Math.min(cap, 6);
   else if (days === 2 && !strongTwoDayCandidate) cap = Math.min(cap, 8);
@@ -516,13 +523,42 @@ export function applyQualityScoreCap(record, proposedScore) {
   return clamp(Math.min(Number(proposedScore), getQualityScoreCap(record)), -6, 9);
 }
 
+// avg だけから素朴に出すデータ駆動スコア。サンプル数で seed と混ぜる前提。
+export function computeDataDrivenScore(record) {
+  const avg = toNumberOrNull(record?.avg, null);
+  const days = toNumberOrNull(record?.days, 0);
+  if (avg === null || days <= 0) return null;
+  if (avg >= 25000) return 9;
+  if (avg >= 18000) return 8;
+  if (avg >= 12000) return 7;
+  if (avg >= 7000) return 6;
+  if (avg >= 3000) return 5;
+  if (avg >= 0) return 4;
+  if (avg >= -5000) return 3;
+  if (avg >= -12000) return 2;
+  if (avg >= -20000) return 1;
+  return 0;
+}
+
 export function computeLiveScore(record) {
   const seedBlend = blendExpected(record.seedAvg, record.sendan, record.seedDays);
   const liveBlend = blendExpected(record.avg, record.sendan, record.days);
   // 6000 円の改善で ±1 点、±5 点まで動けるように刻みを細かく。
   const scoreShift = clamp(Math.round((liveBlend - seedBlend) / 6000), -5, 5);
-  const shiftedScore = clamp(record.seedScore + scoreShift, -6, 9);
-  return applyQualityScoreCap(record, shiftedScore);
+  const seedBased = clamp(record.seedScore + scoreShift, -6, 9);
+
+  // データ駆動スコア (avg ベース) を、サンプル数に応じて seed ベースと加重平均する。
+  // 手動 seedScore が低めでも、days が増えるほど実績が反映されるようになる。
+  // 例: days=4 で 50/50, days=10 で約 70% がデータ側。
+  const dataDriven = computeDataDrivenScore(record);
+  let blended = seedBased;
+  if (dataDriven !== null) {
+    const days = Math.max(0, toNumberOrNull(record.days, 0));
+    const dataWeight = days / (days + 4);
+    blended = Math.round(seedBased * (1 - dataWeight) + dataDriven * dataWeight);
+  }
+
+  return applyQualityScoreCap(record, clamp(blended, -6, 9));
 }
 
 export function applyEntriesToRecords(records, entries = []) {

@@ -380,8 +380,34 @@ function computeLiveScore_(record) {
   const liveBlend = blendExpected_(record.avg, record.sendan, record.days);
   // 6000 円の改善で ±1 点、±5 点まで動けるように刻みを細かく。
   const scoreShift = clamp_(Math.round((liveBlend - seedBlend) / 6000), -5, 5);
-  const shiftedScore = clamp_(record.seedScore + scoreShift, -6, 9);
-  return applyQualityScoreCap_(record, shiftedScore);
+  const seedBased = clamp_(record.seedScore + scoreShift, -6, 9);
+
+  // データ駆動スコア (avg ベース) を、サンプル数に応じて seed ベースと加重平均する。
+  const dataDriven = computeDataDrivenScore_(record);
+  var blended = seedBased;
+  if (dataDriven !== null) {
+    const days = Math.max(0, toNumberOrNull_(record && record.days, 0));
+    const dataWeight = days / (days + 4);
+    blended = Math.round(seedBased * (1 - dataWeight) + dataDriven * dataWeight);
+  }
+
+  return applyQualityScoreCap_(record, clamp_(blended, -6, 9));
+}
+
+function computeDataDrivenScore_(record) {
+  const avg = toNumberOrNull_(record && record.avg, null);
+  const days = toNumberOrNull_(record && record.days, 0);
+  if (avg === null || days <= 0) return null;
+  if (avg >= 25000) return 9;
+  if (avg >= 18000) return 8;
+  if (avg >= 12000) return 7;
+  if (avg >= 7000) return 6;
+  if (avg >= 3000) return 5;
+  if (avg >= 0) return 4;
+  if (avg >= -5000) return 3;
+  if (avg >= -12000) return 2;
+  if (avg >= -20000) return 1;
+  return 0;
 }
 
 function blendExpected_(avg, sendan, days) {
@@ -416,10 +442,15 @@ function getQualityScoreCap_(record) {
   else if (avg < 12000) cap = Math.min(cap, 7);
   else if (avg < 20000) cap = Math.min(cap, 8);
 
-  if (sendan < 0) cap = Math.min(cap, 4);
-  else if (sendan < 5000) cap = Math.min(cap, 6);
-  else if (sendan < 10000) cap = Math.min(cap, 7);
-  else if (sendan < 18000) cap = Math.min(cap, 8);
+  var sendanCap = 9;
+  if (sendan < 0) sendanCap = 4;
+  else if (sendan < 5000) sendanCap = 6;
+  else if (sendan < 10000) sendanCap = 7;
+  else if (sendan < 18000) sendanCap = 8;
+  // 占断が弱気でも実績で打てると確認済みなら sendan 由来の cap を緩和。
+  if (avg !== null && days >= 5 && avg > sendan + 8000) sendanCap = Math.min(9, sendanCap + 1);
+  if (avg !== null && days >= 8 && avg > sendan + 14000) sendanCap = Math.min(9, sendanCap + 1);
+  cap = Math.min(cap, sendanCap);
 
   if (days <= 1) cap = Math.min(cap, 6);
   else if (days === 2 && !strongTwoDayCandidate) cap = Math.min(cap, 8);
