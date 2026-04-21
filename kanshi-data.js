@@ -511,6 +511,19 @@ export function getQualityScoreCap(record) {
   if (avg !== null && days >= 8 && avg > sendan + 14000) sendanCap = Math.min(9, sendanCap + 1);
   cap = Math.min(cap, sendanCap);
 
+  // 失望キャップ: 占断は強気でも実績が明確に下回っていてサンプルもあるなら、
+  // 占断ベースの上振れを無視して avg ベースの cap まで天井を引き下げる。
+  // sendanCap 緩和の対称版。
+  if (avg !== null && days >= 5 && avg < sendan - 8000) {
+    let avgCap = 9;
+    if (avg < 0) avgCap = 4;
+    else if (avg < 5000) avgCap = 6;
+    else if (avg < 12000) avgCap = 7;
+    else if (avg < 20000) avgCap = 8;
+    cap = Math.min(cap, avgCap);
+  }
+  if (avg !== null && days >= 8 && avg < sendan - 14000) cap = Math.min(cap, Math.max(-6, cap - 1));
+
   if (days <= 1) cap = Math.min(cap, 6);
   else if (days === 2 && !strongTwoDayCandidate) cap = Math.min(cap, 8);
 

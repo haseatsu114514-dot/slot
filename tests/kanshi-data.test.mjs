@@ -221,6 +221,15 @@ suite("blendExpected / 評価", () => {
     });
     assert.ok(computeLiveScore(record) >= 7, "cap should expand from 6 to 7");
   });
+  test("失望キャップ: sendan は強気でも avg が下回り days>=5 なら avg ベースの cap に抑え込まれる", () => {
+    // sendan=22000 → 本来の天井は 9、だが avg=12000 で days=6、差 -10000 > 8000 → avgCap=8 で頭打ち。
+    // seedScore=9 のままでは 9 が出てしまうところを、失望キャップで 8 以下に抑える。
+    const record = normalizeRecord("X", {
+      seedScore: 9, seedAvg: 22000, seedDays: 5,
+      sendan: 22000, avg: 12000, days: 6, tags: []
+    });
+    assert.ok(computeLiveScore(record) <= 8, `expected <= 8, got ${computeLiveScore(record)}`);
+  });
   test("getRating は閾値で tier が変わる", () => {
     assert.equal(getRating(9).tier, "perfect");
     assert.equal(getRating(7).tier, "special");
