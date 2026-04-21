@@ -1062,6 +1062,90 @@ details[open] .collapsible-arrow {
   letter-spacing: 0.04em;
 }
 
+.calendar-month-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(221, 187, 114, 0.35);
+  background: rgba(221, 187, 114, 0.08);
+  font-size: 0.8rem;
+  color: var(--gold-soft);
+  font-weight: 700;
+}
+
+.calendar-month-select-label {
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.calendar-month-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 4px 22px 4px 4px;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    right 10px top 55%,
+    right 5px top 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.calendar-month-select select:focus {
+  outline: 2px solid rgba(221, 187, 114, 0.55);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.calendar-month-select select option {
+  color: #111;
+  background: #f7efd9;
+}
+
+.calendar-month-nav {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.month-nav-button {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.month-nav-button:hover:not(:disabled) {
+  background: rgba(221, 187, 114, 0.18);
+  border-color: rgba(221, 187, 114, 0.45);
+  color: var(--gold-soft);
+}
+
+.month-nav-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .calendar-jump input[type="date"] {
   border: 0;
   background: transparent;
@@ -1224,12 +1308,50 @@ html[data-theme="sepia"] .quick-input-field input {
   padding: 5px 10px;
 }
 
-.month-accordion {
+.month-accordion,
+.month-panel {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
     rgba(17, 19, 26, 0.52);
+}
+
+.month-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: linear-gradient(180deg, rgba(17, 19, 26, 0.96), rgba(17, 19, 26, 0.82));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 18px 18px 0 0;
+}
+
+html[data-theme="sepia"] .month-panel-head {
+  background: linear-gradient(180deg, rgba(239, 225, 192, 0.96), rgba(239, 225, 192, 0.82));
+}
+
+html[data-theme="light"] .month-panel-head {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.82));
+}
+
+.month-panel-title h3 {
+  margin: 4px 0 0;
+  font-size: 1.15rem;
+  font-family: "Zen Old Mincho", serif;
+}
+
+.month-panel-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .month-accordion-summary {

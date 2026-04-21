@@ -33,9 +33,11 @@ const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
 const STATS_SCOPE_STORAGE_KEY = "slot-kanshi-stats-scope-v1";
 const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
 const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
+const SELECTED_MONTH_STORAGE_KEY = "slot-kanshi-selected-month-v1";
 const REMOTE_CACHE_KEY = "slot-kanshi-remote-cache-v1";
 const THEMES = ["dark", "sepia", "light"];
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
+const INITIAL_SELECTED_MONTH_KEY = getInitialSelectedMonthKey(CONFIG, INITIAL_SELECTED_DATE_KEY);
 const INITIAL_REMOTE_CACHE = loadRemoteCache();
 
 const state = {
@@ -53,7 +55,8 @@ const state = {
   calendarFilter: loadCalendarFilter(),
   statsScope: loadStatsScope(),
   goal: loadGoal(),
-  editingEntryId: null
+  editingEntryId: null,
+  selectedMonthKey: INITIAL_SELECTED_MONTH_KEY
 };
 
 const refs = {
@@ -93,6 +96,12 @@ const refs = {
   importJsonInput: document.getElementById("importJsonInput"),
   logToolStatus: document.getElementById("logToolStatus"),
   calendarJumpInput: document.getElementById("calendarJumpInput"),
+  calendarMonthSelect: document.getElementById("calendarMonthSelect"),
+  prevMonthButton: document.getElementById("prevMonthButton"),
+  nextMonthButton: document.getElementById("nextMonthButton"),
+  rangeChipText: document.getElementById("rangeChipText"),
+  summaryTitle: document.getElementById("summaryTitle"),
+  summaryKicker: document.getElementById("summaryKicker"),
   formFab: document.getElementById("formFab"),
   quickInputPopover: document.getElementById("quickInputPopover"),
   exportReportButton: document.getElementById("exportReportButton"),
@@ -197,6 +206,11 @@ function selectDate(dateKey) {
   if (!dateKey) return;
   state.selectedDateKey = dateKey;
   refs.playDateInput.value = state.selectedDateKey;
+  // 選択日が現在表示中の月と違う場合は、カレンダーを選択日の月に自動で切り替える。
+  const targetMonthKey = dateKey.slice(0, 7);
+  if (targetMonthKey !== state.selectedMonthKey) {
+    setSelectedMonth(targetMonthKey);
+  }
   updateFormPreview();
   render();
   // Reset the sticky detail panel's internal scroll so that switching days
@@ -400,8 +414,6 @@ function wireEvents() {
     window.requestAnimationFrame(() => {
       const target = refs.calendarGrid.querySelector(`[data-date-key="${value}"]`);
       if (!target) return;
-      const monthAcc = target.closest("details.month-accordion");
-      if (monthAcc && !monthAcc.open) monthAcc.open = true;
       target.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
@@ -447,16 +459,33 @@ function wireEvents() {
       const day = event.key === "Home" ? 1 : getDaysInMonth(y, m);
       nextKey = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
-    const target = refs.calendarGrid.querySelector(`[data-date-key="${nextKey}"]`);
-    if (!target) return;
-    const monthAcc = target.closest("details.month-accordion");
-    if (monthAcc && !monthAcc.open) monthAcc.open = true;
+    // selectDate が月をまたいだ場合にカレンダー自体を切替えるため、
+    // その後で querySelector した方が確実にターゲットセルが見つかる。
     selectDate(nextKey);
-    // Focus after render to keep arrow-chain navigation responsive.
     window.requestAnimationFrame(() => {
       const refreshed = refs.calendarGrid.querySelector(`[data-date-key="${nextKey}"]`);
       if (refreshed) refreshed.focus();
     });
+  });
+
+  refs.calendarMonthSelect?.addEventListener("change", (event) => {
+    const value = event.target.value;
+    if (!value) return;
+    if (setSelectedMonth(value)) render();
+  });
+
+  refs.prevMonthButton?.addEventListener("click", () => {
+    const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
+    const keys = months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`);
+    const idx = keys.indexOf(state.selectedMonthKey);
+    if (idx > 0 && setSelectedMonth(keys[idx - 1])) render();
+  });
+
+  refs.nextMonthButton?.addEventListener("click", () => {
+    const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
+    const keys = months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`);
+    const idx = keys.indexOf(state.selectedMonthKey);
+    if (idx >= 0 && idx < keys.length - 1 && setSelectedMonth(keys[idx + 1])) render();
   });
 }
 
@@ -682,7 +711,7 @@ function exportMonthlyReportImage() {
     ctx.fill();
     ctx.fillStyle = "#b7a98b";
     ctx.font = "600 14px 'Zen Kaku Gothic New', sans-serif";
-    ctx.fillText("3か月 内訳", rightX, countsY - 10);
+    ctx.fillText(`${CONFIG.monthCount}か月 内訳`, rightX, countsY - 10);
     const rows = [
       { label: "★ 完璧", value: summary.perfect, color: "#f3d9a7" },
       { label: "◎ 絶好", value: summary.special, color: "#41c983" },
@@ -983,12 +1012,9 @@ function jumpToToday() {
     return;
   }
   selectDate(todayKey);
-  // Open the target month's accordion if closed, then scroll the day card into view.
   window.requestAnimationFrame(() => {
     const target = refs.calendarGrid.querySelector(`[data-date-key="${todayKey}"]`);
     if (!target) return;
-    const monthAcc = target.closest("details.month-accordion");
-    if (monthAcc && !monthAcc.open) monthAcc.open = true;
     target.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 }
@@ -1203,6 +1229,47 @@ function getInitialSelectedDateKey(config) {
   return config.anchorDate;
 }
 
+/**
+ * 起動時にカレンダーで最初に開く月 (YYYY-MM) を決める。
+ * localStorage に保存された月が表示範囲にあればそれを優先、
+ * 次に初期選択日付の月、最後に anchorDate の月。
+ */
+function getInitialSelectedMonthKey(config, selectedDateKey) {
+  const months = getMonthSequence(config.startMonth, config.monthCount);
+  const validKeys = new Set(months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`));
+  const fallbackMonth = selectedDateKey?.slice(0, 7);
+  try {
+    const stored = window.localStorage.getItem(SELECTED_MONTH_STORAGE_KEY);
+    if (stored && validKeys.has(stored)) return stored;
+  } catch (error) {
+    // ignore storage errors
+  }
+  if (fallbackMonth && validKeys.has(fallbackMonth)) return fallbackMonth;
+  if (months.length) return `${months[0].year}-${String(months[0].month).padStart(2, "0")}`;
+  return config.anchorDate.slice(0, 7);
+}
+
+function persistSelectedMonth(monthKey) {
+  try {
+    window.localStorage.setItem(SELECTED_MONTH_STORAGE_KEY, monthKey);
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
+function setSelectedMonth(monthKey, { persist = true } = {}) {
+  const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
+  const validKeys = new Set(months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`));
+  if (!validKeys.has(monthKey)) return false;
+  if (state.selectedMonthKey === monthKey) return false;
+  state.selectedMonthKey = monthKey;
+  if (persist) persistSelectedMonth(monthKey);
+  if (refs.calendarMonthSelect && refs.calendarMonthSelect.value !== monthKey) {
+    refs.calendarMonthSelect.value = monthKey;
+  }
+  return true;
+}
+
 /** @returns {string} Today's date as `YYYY-MM-DD`. */
 function getTodayDateKey() {
   const now = new Date();
@@ -1293,6 +1360,7 @@ function render() {
   const upcomingDays = getUpcomingDays(months);
 
   refs.syncBadgeText.textContent = getSyncLabel();
+  renderRangeChip(months);
   renderSummary(summary);
   renderPerformance();
   renderUpcoming(upcomingDays);
@@ -1884,6 +1952,18 @@ function formatSigned(value) {
   return String(n);
 }
 
+function renderRangeChip(months) {
+  if (!months.length) return;
+  const first = months[0];
+  const last = months[months.length - 1];
+  const rangeText = first === last
+    ? first.label
+    : `${first.label} - ${last.year}年${last.month}月`;
+  if (refs.rangeChipText) refs.rangeChipText.textContent = rangeText;
+  if (refs.summaryKicker) refs.summaryKicker.textContent = `${months.length} Months`;
+  if (refs.summaryTitle) refs.summaryTitle.textContent = `${months.length}か月サマリー`;
+}
+
 function renderSummary(summary) {
   refs.summaryCards.innerHTML = [
     buildSummaryCard("カレンダー日数", summary.total, `実績 ${summary.totalSamples}日`, "is-neutral"),
@@ -1977,9 +2057,15 @@ function renderUpcoming(upcomingDays) {
 
 function renderCalendar(months) {
   const todayKey = getTodayDateKey();
-  const todayMonth = todayKey.slice(0, 7);
   const recordedDates = getRecordedDateSet();
-  refs.calendarGrid.innerHTML = months
+  const allKeys = months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`);
+  if (!allKeys.includes(state.selectedMonthKey) && allKeys.length) {
+    state.selectedMonthKey = allKeys[0];
+  }
+  const visibleMonths = months.filter(
+    (m) => `${m.year}-${String(m.month).padStart(2, "0")}` === state.selectedMonthKey
+  );
+  refs.calendarGrid.innerHTML = visibleMonths
     .map((month) => {
       const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
       const expectedTotal = Math.round(
@@ -2033,23 +2119,18 @@ function renderCalendar(months) {
           `;
         })
         .join("");
-      // Auto-open only the month containing today (fall back to first month if today is out-of-range).
-      const monthKey = `${month.year}-${String(month.month).padStart(2, "0")}`;
-      const isTodayMonth = monthKey === todayMonth;
-      const openAttr = isTodayMonth || (todayMonth < `${months[0].year}-${String(months[0].month).padStart(2, "0")}` && month === months[0]) ? " open" : "";
       return `
-        <details class="month-accordion"${openAttr}>
-          <summary class="month-accordion-summary">
-            <div class="month-accordion-title">
+        <section class="month-panel is-open">
+          <header class="month-panel-head">
+            <div class="month-panel-title">
               <p class="month-kicker">${month.year}</p>
               <h3>${month.label}</h3>
               <p class="month-pillar">月干支: ${month.monthPillarSummary}</p>
             </div>
-            <div class="month-accordion-meta">
+            <div class="month-panel-meta">
               <div class="month-stats">${statChips}</div>
-              <span class="month-accordion-arrow" aria-hidden="true"></span>
             </div>
-          </summary>
+          </header>
           <article class="month-card">
             <p class="month-expectation">
               ★・◎・○だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
@@ -2061,10 +2142,41 @@ function renderCalendar(months) {
               ${dayCells}
             </div>
           </article>
-        </details>
+        </section>
       `;
     })
     .join("");
+  updateMonthSelectorUI(months);
+}
+
+function updateMonthSelectorUI(months) {
+  if (refs.calendarMonthSelect) {
+    const select = refs.calendarMonthSelect;
+    const desired = months
+      .map((m) => {
+        const key = `${m.year}-${String(m.month).padStart(2, "0")}`;
+        return { key, label: m.label };
+      });
+    const existingKeys = Array.from(select.options).map((opt) => opt.value);
+    const desiredKeys = desired.map((d) => d.key);
+    const changed =
+      existingKeys.length !== desiredKeys.length ||
+      existingKeys.some((key, i) => key !== desiredKeys[i]);
+    if (changed) {
+      select.innerHTML = desired
+        .map((d) => `<option value="${d.key}">${d.label}</option>`)
+        .join("");
+    }
+    if (select.value !== state.selectedMonthKey) {
+      select.value = state.selectedMonthKey;
+    }
+  }
+  if (refs.prevMonthButton && refs.nextMonthButton) {
+    const keys = months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`);
+    const idx = keys.indexOf(state.selectedMonthKey);
+    refs.prevMonthButton.disabled = idx <= 0;
+    refs.nextMonthButton.disabled = idx < 0 || idx >= keys.length - 1;
+  }
 }
 
 function buildMonthStat(label, value, tier) {

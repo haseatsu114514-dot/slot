@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=20260417e">
+    <link rel="stylesheet" href="./styles.css?v=20260421a">
     <link rel="manifest" href="./manifest.webmanifest">
     <meta name="theme-color" content="#0f1014">
   </head>
@@ -26,7 +26,7 @@
           </div>
           <div class="hero-chip">
             <span class="hero-chip-label">表示期間</span>
-            <strong>2026年4月 - 6月</strong>
+            <strong id="rangeChipText">2025年6月 - 2026年6月</strong>
           </div>
           <div class="hero-chip">
             <span class="hero-chip-label">同期状態</span>
@@ -45,8 +45,8 @@
           <article class="panel panel-stat">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">3 Months</p>
-                <h2>90日サマリー</h2>
+                <p class="panel-kicker" id="summaryKicker">Range</p>
+                <h2 id="summaryTitle">範囲サマリー</h2>
               </div>
               <button id="exportReportButton" type="button" class="panel-link panel-link-button">月次レポートPNG</button>
             </div>
@@ -78,7 +78,7 @@
             <div class="panel-head">
               <div>
                 <p class="panel-kicker">Calendar</p>
-                <h2>3か月カレンダー</h2>
+                <h2>月別カレンダー</h2>
               </div>
               <div class="legend" role="list" aria-label="評価凡例">
                 <span class="legend-item is-perfect" role="listitem" title="★ 完璧: スコア 9 以上 / 最優先で打つべき日">★</span>
@@ -89,6 +89,14 @@
               </div>
             </div>
             <div class="calendar-toolbar">
+              <label class="calendar-month-select">
+                <span class="calendar-month-select-label">表示月</span>
+                <select id="calendarMonthSelect" aria-label="表示月を選択"></select>
+              </label>
+              <div class="calendar-month-nav" role="group" aria-label="月送り">
+                <button id="prevMonthButton" class="month-nav-button" type="button" aria-label="前の月へ">‹</button>
+                <button id="nextMonthButton" class="month-nav-button" type="button" aria-label="次の月へ">›</button>
+              </div>
               <div class="calendar-filter" role="group" aria-label="カレンダー絞り込み">
                 <button type="button" class="filter-chip is-active" data-filter="all">全て</button>
                 <button type="button" class="filter-chip" data-filter="go">○以上</button>
@@ -101,7 +109,7 @@
               </label>
               <button id="jumpTodayButton" class="today-jump-button" type="button">今日へ移動</button>
             </div>
-            <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="3か月カレンダー"></div>
+            <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="月別カレンダー"></div>
             <div id="dayHoverCard" class="day-hover-card" hidden></div>
           </article>
 
@@ -285,8 +293,8 @@
       window.SLOT_APP_CONFIG = {
         anchorDate: "2026-04-07",
         anchorKanshi: "辛亥",
-        startMonth: "2026-04",
-        monthCount: 3,
+        startMonth: "2025-06",
+        monthCount: 13,
         userStar: 4,
         badStars: [7, 6, 9],
         spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1EcqzzauwTSOPXo-Mx7S8U7iDsxYVgE2YarW3qR7krts/edit?gid=1420767271#gid=1420767271",
@@ -294,7 +302,7 @@
         syncSecret: "slot-sync-2026-secret"
       };
     </script>
-    <script type="module" src="./app.js?v=20260417e"></script>
+    <script type="module" src="./app.js?v=20260421a"></script>
     <script src="./calendar-kicho-label.js?v=20260416a"></script>
   </body>
 </html>
