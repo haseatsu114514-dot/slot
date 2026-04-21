@@ -1026,7 +1026,7 @@ export function getKyuseiPerformanceContext(dateKey, records, config = DEFAULT_C
   const scoreDelta = row.avgScore - overallAvgScore;
   const rawAdjustment =
     ((clamp(valueDelta / 15000, -1.4, 1.4) * 0.65) + (clamp(scoreDelta / 2.5, -1.1, 1.1) * 0.35)) * sampleWeight;
-  const adjustment = row.sampleDays > 0 ? clamp(roundToHalfStep(rawAdjustment), -1.5, 1.5) : 0;
+  const adjustment = row.sampleDays > 0 ? clamp(roundToHalfStep(rawAdjustment), -1, 1) : 0;
   const expectedInfluence = Math.round(clamp(valueDelta * sampleWeight * 0.25, -5000, 5000));
   const trend =
     adjustment >= 1 ? "かなり追い風"
