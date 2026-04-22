@@ -33,7 +33,9 @@ import {
   getKyuseiForDateKey,
   aggregateByKyusei,
   getKyuseiPerformanceContext,
-  findDateForMonthKanshi
+  findDateForMonthKanshi,
+  getHoliday,
+  JAPANESE_HOLIDAYS
 } from "../kanshi-data.js";
 
 let passed = 0;
@@ -151,6 +153,34 @@ suite("干支計算", () => {
   });
   test("60日前も同じ干支", () => {
     assert.equal(getKanshiForDateKey("2026-02-06"), "辛亥");
+  });
+});
+
+suite("祝日", () => {
+  test("元日", () => {
+    assert.equal(getHoliday("2026-01-01")?.name, "元日");
+  });
+  test("GW 5/3-5/5 + 振替休日 5/6 (2026)", () => {
+    assert.equal(getHoliday("2026-05-03")?.name, "憲法記念日");
+    assert.equal(getHoliday("2026-05-04")?.name, "みどりの日");
+    assert.equal(getHoliday("2026-05-05")?.name, "こどもの日");
+    assert.equal(getHoliday("2026-05-06")?.name, "振替休日");
+  });
+  test("9/22 2026 は国民の休日 (敬老の日と秋分の日に挟まれる)", () => {
+    assert.equal(getHoliday("2026-09-21")?.name, "敬老の日");
+    assert.equal(getHoliday("2026-09-22")?.name, "国民の休日");
+    assert.equal(getHoliday("2026-09-23")?.name, "秋分の日");
+  });
+  test("平日は null", () => {
+    assert.equal(getHoliday("2026-04-22"), null);
+  });
+  test("範囲外は null", () => {
+    assert.equal(getHoliday("2099-01-01"), null);
+  });
+  test("カバー年: 2024-2027 すべて元日を含む", () => {
+    ["2024", "2025", "2026", "2027"].forEach((year) => {
+      assert.ok(JAPANESE_HOLIDAYS[`${year}-01-01`], `${year}-01-01 を含むべき`);
+    });
   });
 });
 

@@ -1491,6 +1491,40 @@ html[data-theme="light"] .month-accordion-summary {
   padding: 1px 0 2px;
 }
 
+.day-card.is-holiday .day-number {
+  color: #f5a39d;
+}
+
+.day-holiday {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #f5a39d;
+  background: rgba(245, 163, 157, 0.14);
+  border-radius: 4px;
+  padding: 1px 4px;
+  line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 720px) {
+  .day-holiday { font-size: 0.62rem; }
+}
+
+.selected-holiday-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(245, 163, 157, 0.18);
+  color: #f5a39d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
 .day-marker-corner {
   position: absolute;
   top: 4px;

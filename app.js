@@ -1988,16 +1988,26 @@ function renderCalendar(months) {
           const hasEntry = recordedDates.has(day.dateKey);
           const entryClass = hasEntry ? "has-entry" : "";
           const dimClass = matchesCalendarFilter(day, recordedDates) ? "" : "is-dimmed";
-          const scoreSummary = escapeHtml(`スコア ${formatCompactScore(day.record.score)} / 実績平均 ${formatYen(day.record.avg)} / ${day.record.days}日平均 / ${day.playStyle.label} / 九星 ${day.kyusei?.name || "-"} ${getScoreText(day.kyuseiContext?.adjustment || 0)}`);
+          const holidayClass = day.holiday ? "is-holiday" : "";
+          const summaryParts = [
+            `スコア ${formatCompactScore(day.record.score)}`,
+            `実績平均 ${formatYen(day.record.avg)}`,
+            `${day.record.days}日平均`,
+            day.playStyle.label,
+            `九星 ${day.kyusei?.name || "-"} ${getScoreText(day.kyuseiContext?.adjustment || 0)}`
+          ];
+          if (day.holiday) summaryParts.unshift(`祝日 ${day.holiday.name}`);
+          const scoreSummary = escapeHtml(summaryParts.join(" / "));
           const columnStart = day.day === 1 ? ` style="grid-column-start: ${index + 1};"` : "";
           const markerHtml = day.specialDateContext.statuses.length
             ? `<span class="day-marker-corner is-caution" aria-hidden="true">!</span>`
             : "";
           const todayBadge = day.dateKey === todayKey ? `<span class="day-today-badge" aria-hidden="true">Today</span>` : "";
           const entryBadge = hasEntry ? `<span class="day-entry-badge" aria-hidden="true" title="実績入力あり">●</span>` : "";
+          const holidayLabel = day.holiday ? `<span class="day-holiday" title="${escapeHtml(day.holiday.name)}">${escapeHtml(day.holiday.name)}</span>` : "";
           return `
             <button
-              class="day-card tier-${day.rating.tier} ${selectedClass} ${todayClass} ${entryClass} ${dimClass}"
+              class="day-card tier-${day.rating.tier} ${selectedClass} ${todayClass} ${entryClass} ${dimClass} ${holidayClass}"
               type="button"
               data-date-key="${day.dateKey}"
               aria-label="${scoreSummary}"
@@ -2007,6 +2017,7 @@ function renderCalendar(months) {
               ${todayBadge}
               ${entryBadge}
               <span class="day-number">${day.day}</span>
+              ${holidayLabel}
               <strong class="day-rating">${day.rating.label}</strong>
               <span class="day-kanshi">${day.kanshi}</span>
               <span class="day-kyusei">${day.kyusei?.name || ""}</span>
@@ -2090,10 +2101,13 @@ function renderSelectedDay() {
     const confidence = day.confidence || getConfidence(day.record);
     const confidenceToneClass = getToneClass(confidence.tone);
 
+    const selectedDateLabel = day.holiday
+      ? `${day.year}/${day.month}/${day.day} (${weekday}) <span class="selected-holiday-badge">祝 ${escapeHtml(day.holiday.name)}</span>`
+      : `${day.year}/${day.month}/${day.day} (${weekday})`;
     refs.selectedDayPanel.innerHTML = `
       <div class="selected-top tier-${day.rating.tier}">
         <div>
-          <p class="selected-date">${day.year}/${day.month}/${day.day} (${weekday})</p>
+          <p class="selected-date">${selectedDateLabel}</p>
           <h3>${day.kanshi}</h3>
         </div>
         <div class="selected-badge">
