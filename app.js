@@ -200,9 +200,12 @@ function registerServiceWorker() {
   // Only register when served over http(s); skip file://.
   if (!/^https?:$/.test(window.location.protocol)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {
-      /* ignore registration errors; app still works without SW */
-    });
+    navigator.serviceWorker
+      .register("./service-worker.js")
+      .then((registration) => registration.update().catch(() => undefined))
+      .catch(() => {
+        /* ignore registration errors; app still works without SW */
+      });
   });
 }
 
