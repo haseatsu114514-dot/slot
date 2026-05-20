@@ -35,6 +35,7 @@ const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
 const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
 const SELECTED_MONTH_STORAGE_KEY = "slot-kanshi-selected-month-v1";
 const REMOTE_CACHE_KEY = "slot-kanshi-remote-cache-v1";
+const DELETED_ENTRY_KEYS_STORAGE_KEY = "slot-kanshi-deleted-entry-keys-v1";
 const THEMES = ["dark", "sepia", "light"];
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
 const INITIAL_SELECTED_MONTH_KEY = getInitialSelectedMonthKey(CONFIG, INITIAL_SELECTED_DATE_KEY);
@@ -44,6 +45,7 @@ const state = {
   remoteRecords: INITIAL_REMOTE_CACHE ? buildRecordsFromPayload(INITIAL_REMOTE_CACHE.records || {}) : null,
   remoteEntries: INITIAL_REMOTE_CACHE && Array.isArray(INITIAL_REMOTE_CACHE.entries) ? INITIAL_REMOTE_CACHE.entries : [],
   localEntries: loadLocalEntries(),
+  deletedEntryKeys: loadDeletedEntryKeys(),
   selectedDateKey: INITIAL_SELECTED_DATE_KEY,
   sync: {
     mode: CONFIG.syncEndpoint ? "loading" : "offline",
@@ -1149,11 +1151,11 @@ function matchesCalendarFilter(day, recordedDates) {
 
 function getRecordedDateSet() {
   const set = new Set();
-  for (const entry of state.remoteEntries) {
+  for (const entry of getVisibleRemoteEntries()) {
     const key = normalizeTargetDate(entry?.targetDate);
     if (key) set.add(key);
   }
-  for (const entry of state.localEntries) {
+  for (const entry of getVisibleLocalEntries()) {
     const key = normalizeTargetDate(entry?.targetDate);
     if (key) set.add(key);
   }
@@ -1174,6 +1176,25 @@ function loadLocalEntries() {
 
 function persistLocalEntries() {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.localEntries));
+}
+
+function loadDeletedEntryKeys() {
+  try {
+    const raw = window.localStorage.getItem(DELETED_ENTRY_KEYS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter(Boolean).map(String));
+  } catch (error) {
+    return new Set();
+  }
+}
+
+function persistDeletedEntryKeys() {
+  window.localStorage.setItem(
+    DELETED_ENTRY_KEYS_STORAGE_KEY,
+    JSON.stringify(Array.from(state.deletedEntryKeys))
+  );
 }
 
 function loadRemoteCache() {
@@ -1208,18 +1229,38 @@ function getSeedRecords() {
 }
 
 function getComputedRecords() {
+  const localEntries = getVisibleLocalEntries();
+  if (hasLocalEntryMasks()) {
+    return applyEntriesToRecords(getSeedRecords(), [...getVisibleRemoteEntries(), ...localEntries]);
+  }
   const sourceRecords = state.remoteRecords || getSeedRecords();
-  return applyEntriesToRecords(sourceRecords, state.localEntries);
+  return applyEntriesToRecords(sourceRecords, localEntries);
 }
 
 function getAllEntries() {
-  const merged = [...state.remoteEntries, ...state.localEntries];
+  const merged = [...getVisibleRemoteEntries(), ...getVisibleLocalEntries()];
   return merged.sort((left, right) => {
     if (left.targetDate !== right.targetDate) {
       return left.targetDate < right.targetDate ? 1 : -1;
     }
     return (right.createdAt || "").localeCompare(left.createdAt || "");
   });
+}
+
+function getVisibleRemoteEntries() {
+  return state.remoteEntries.filter((entry) => !isEntryDeleted(entry));
+}
+
+function getVisibleLocalEntries() {
+  return state.localEntries.filter((entry) => !isEntryDeleted(entry));
+}
+
+function hasLocalEntryMasks() {
+  return state.deletedEntryKeys.size > 0 || state.localEntries.some((entry) => entry.replacesEntryKey);
+}
+
+function isEntryDeleted(entry) {
+  return state.deletedEntryKeys.has(getEntryKey(entry));
 }
 
 function getMonthModels(records) {
@@ -1359,7 +1400,7 @@ function getSummary(months) {
 }
 
 function getSyncLabel() {
-  const pendingCount = state.localEntries.filter((e) => e.pendingSync).length;
+  const pendingCount = getVisibleLocalEntries().filter((e) => e.pendingSync).length;
   const pendingSuffix = pendingCount > 0 ? ` / 保留${pendingCount}件` : "";
   if (state.sync.mode === "online") return `Google Sheets 同期中${pendingSuffix}`;
   if (state.sync.mode === "loading") return `Sheets 接続中${pendingSuffix}`;
@@ -1504,10 +1545,12 @@ function normalizeTargetDate(value) {
 }
 
 function getDedupedAggregateEntries() {
-  const hasRemote = Array.isArray(state.remoteEntries) && state.remoteEntries.length > 0;
+  const remoteEntries = getVisibleRemoteEntries();
+  const localEntries = getVisibleLocalEntries();
+  const hasRemote = Array.isArray(remoteEntries) && remoteEntries.length > 0;
   const source = hasRemote
-    ? [...state.remoteEntries, ...state.localEntries]
-    : [...state.localEntries];
+    ? [...remoteEntries, ...localEntries]
+    : [...localEntries];
 
   // targetDate をキーに重複排除。createdAt が新しい方を優先。
   const map = new Map();
@@ -2348,7 +2391,7 @@ function renderRecentEntries() {
     return;
   }
 
-  const localKeys = new Set(state.localEntries.map(getEntryKey));
+  const localKeys = new Set(getVisibleLocalEntries().map(getEntryKey));
 
   refs.recentEntries.innerHTML = entries
     .slice(0, 20)
@@ -2535,8 +2578,39 @@ async function deleteEntry(entry) {
     setFormStatus(`${normalizeTargetDate(entry.targetDate)} の記録を削除しました。`, "success");
     render();
   } catch (error) {
-    setFormStatus("Sheets の削除に失敗しました。時間を置いてもう一度試してください。", "warn");
+    markRemoteEntryDeleted(entry);
+    if (state.editingEntryKey === entryKey) clearEditingState();
+    setFormStatus("Sheets 側APIが未更新のため、この端末では削除済みにしました。Apps Script再デプロイ後はSheetsにも直接反映されます。", "warn");
+    render();
   }
+}
+
+function markRemoteEntryDeleted(entry) {
+  const entryKey = getEntryKey(entry);
+  if (!entryKey) return;
+  state.deletedEntryKeys.add(entryKey);
+  state.localEntries = state.localEntries.filter((localEntry) => localEntry.replacesEntryKey !== entryKey);
+  persistDeletedEntryKeys();
+  persistLocalEntries();
+}
+
+function replaceRemoteEntryLocally(existingEntry, replacement) {
+  const entryKey = getEntryKey(existingEntry);
+  state.deletedEntryKeys.add(entryKey);
+  const localReplacement = {
+    ...replacement,
+    id: `local-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    rowNumber: null,
+    createdAt: replacement.createdAt || existingEntry.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    replacesEntryKey: entryKey,
+    localOnly: true,
+    pendingSync: false
+  };
+  state.localEntries = state.localEntries.filter((localEntry) => localEntry.replacesEntryKey !== entryKey);
+  state.localEntries.unshift(localReplacement);
+  persistDeletedEntryKeys();
+  persistLocalEntries();
 }
 
 function renderRankings(records) {
@@ -3198,7 +3272,13 @@ async function saveResult() {
     render();
   } catch (error) {
     if (existingEntry && !isLocalEntry(existingEntry)) {
-      setFormStatus("Sheets の更新に失敗しました。入力内容はそのまま残してあります。", "warn");
+      replaceRemoteEntryLocally(existingEntry, entry);
+      refs.resultForm.reset();
+      refs.playDateInput.value = targetDate;
+      state.editingEntryKey = null;
+      updateFormPreview();
+      updateDuplicateWarning();
+      setFormStatus("Sheets 側APIが未更新のため、この端末では更新済みにしました。Apps Script再デプロイ後はSheetsにも直接反映されます。", "warn");
       render();
       return;
     }
