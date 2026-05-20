@@ -73,6 +73,28 @@ const CONFIG = Object.freeze({
   }
 });
 
+const KNOWN_ENTRY_REPAIRS = Object.freeze([
+  {
+    fromDate: "2026-05-04",
+    fromProfit: 54000,
+    targetDate: "2026-05-03",
+    profit: 51000
+  },
+  {
+    fromDate: "2026-05-20",
+    fromProfit: 7000,
+    targetDate: "2026-05-20",
+    profit: 5000
+  }
+]);
+
+const KNOWN_SINGLE_ENTRY_TOTALS = Object.freeze({
+  "2026-05-03|51000": true,
+  "2026-05-07|-2500": true,
+  "2026-05-14|-11000": true,
+  "2026-05-20|5000": true
+});
+
 const SEXAGENARY_CYCLE = Array.from(
   { length: 60 },
   (_, index) => CONFIG.HEAVENLY_STEMS[index % 10] + CONFIG.EARTHLY_BRANCHES[index % 12]
@@ -174,8 +196,8 @@ function seedMasterSheet() {
 
 function buildDashboard_() {
   const master = readMasterRecords_();
-  const entries = readResultEntries_();
-  const records = applyEntriesToRecords_(master, entries);
+  const entries = sanitizeResultEntries_(readResultEntries_());
+  const records = applyEntriesToRecords_(master, aggregateEntriesByDate_(entries));
 
   const enrichedEntries = entries
     .map(function(entry) {
@@ -260,6 +282,125 @@ function readResultEntries_() {
     });
 }
 
+function sanitizeResultEntries_(entries) {
+  var normalized = [];
+  var seenIdentity = {};
+  entries.forEach(function(raw) {
+    var entry = normalizeExistingResultEntry_(raw);
+    if (!entry) return;
+    var identityKey = getSourceIdentityKey_(entry);
+    if (seenIdentity[identityKey]) return;
+    seenIdentity[identityKey] = true;
+    normalized.push(entry);
+  });
+  return collapseKnownAccidentalDuplicates_(normalized);
+}
+
+function normalizeExistingResultEntry_(raw) {
+  if (!raw) return null;
+  var targetDate = normalizeDateString_(raw.targetDate);
+  var profit = Number(raw.profit);
+  if (!targetDate || !Number.isFinite(profit)) return null;
+  var entry = {
+    id: String(raw.id || ""),
+    rowNumber: raw.rowNumber || null,
+    createdAt: String(raw.createdAt || ""),
+    targetDate: targetDate,
+    kanshi: String(raw.kanshi || getKanshiForDate_(targetDate)).trim(),
+    profit: profit,
+    store: String(raw.store || "").trim(),
+    machine: String(raw.machine || "").trim(),
+    memo: String(raw.memo || "").trim()
+  };
+  if (!entry.kanshi) return null;
+  entry = applyKnownEntryRepair_(entry);
+  entry.kanshi = String(entry.kanshi || getKanshiForDate_(entry.targetDate)).trim();
+  return entry;
+}
+
+function applyKnownEntryRepair_(entry) {
+  for (var index = 0; index < KNOWN_ENTRY_REPAIRS.length; index += 1) {
+    var repair = KNOWN_ENTRY_REPAIRS[index];
+    if (entry.targetDate === repair.fromDate && Number(entry.profit) === repair.fromProfit) {
+      var repaired = Object.assign({}, entry);
+      repaired.targetDate = repair.targetDate;
+      repaired.kanshi = getKanshiForDate_(repair.targetDate);
+      repaired.profit = repair.profit;
+      return repaired;
+    }
+  }
+  return entry;
+}
+
+function getSourceIdentityKey_(entry) {
+  if (entry.id) return "id:" + entry.id;
+  return [
+    "exact",
+    normalizeDateString_(entry.targetDate),
+    String(entry.kanshi || "").trim(),
+    Number(entry.profit || 0),
+    String(entry.store || "").trim(),
+    String(entry.machine || "").trim(),
+    String(entry.memo || "").trim()
+  ].join("|");
+}
+
+function collapseKnownAccidentalDuplicates_(entries) {
+  var output = [];
+  var knownMap = {};
+  entries.forEach(function(entry) {
+    var key = normalizeDateString_(entry.targetDate) + "|" + Number(entry.profit);
+    if (!KNOWN_SINGLE_ENTRY_TOTALS[key]) {
+      output.push(entry);
+      return;
+    }
+    if (!knownMap[key] || preferKnownSingleEntry_(entry, knownMap[key], key)) {
+      knownMap[key] = entry;
+    }
+  });
+  Object.keys(knownMap).forEach(function(key) {
+    output.push(knownMap[key]);
+  });
+  return output;
+}
+
+function preferKnownSingleEntry_(candidate, existing, key) {
+  var candidateCreated = String(candidate.createdAt || "");
+  var existingCreated = String(existing.createdAt || "");
+  if (key === "2026-05-20|5000") {
+    return candidateCreated > existingCreated;
+  }
+  return candidateCreated < existingCreated;
+}
+
+function aggregateEntriesByDate_(entries) {
+  var map = {};
+  entries.forEach(function(entry) {
+    var targetDate = normalizeDateString_(entry.targetDate);
+    var profit = Number(entry.profit);
+    if (!targetDate || !Number.isFinite(profit)) return;
+    if (!map[targetDate]) {
+      map[targetDate] = Object.assign({}, entry, {
+        id: "daily-total-" + targetDate,
+        rowNumber: null,
+        targetDate: targetDate,
+        kanshi: getKanshiForDate_(targetDate),
+        profit: profit,
+        sourceCount: 1
+      });
+      return;
+    }
+    map[targetDate].profit += profit;
+    map[targetDate].sourceCount += 1;
+    if (String(entry.createdAt || "") > String(map[targetDate].createdAt || "")) {
+      map[targetDate].createdAt = entry.createdAt;
+    }
+  });
+  return Object.keys(map).map(function(key) {
+    return map[key];
+  });
+}
+
 function appendResultIfNew_(entry, options) {
   return withResultsLock_(function() {
     const sheet = getResultsSheet_();
@@ -323,32 +464,75 @@ function repairRequestedEntries_() {
     ensureHeader_(sheet, CONFIG.RESULTS_HEADER);
     var lastRow = sheet.getLastRow();
     var result = {
+      updatedMay3: false,
       updatedMay20: false,
-      may14Kept: 0,
-      may14Deleted: 0
+      deletedKnownDuplicates: 0,
+      keptKnownDuplicateGroups: 0
     };
     if (lastRow < 2) return result;
 
     var rows = sheet.getRange(2, 1, lastRow - 1, CONFIG.RESULTS_HEADER.length).getValues();
-    var may14Rows = [];
 
     rows.forEach(function(row, index) {
       var rowNumber = index + 2;
       var targetDate = normalizeDateCell_(row[2]);
       var profit = Number(row[4] || 0);
+      if (!result.updatedMay3 && targetDate === "2026-05-04" && profit === 54000) {
+        sheet.getRange(rowNumber, 3, 1, 3).setValues([[
+          "2026-05-03",
+          getKanshiForDate_("2026-05-03"),
+          51000
+        ]]);
+        result.updatedMay3 = true;
+        return;
+      }
       if (!result.updatedMay20 && targetDate === "2026-05-20" && profit === 7000) {
         sheet.getRange(rowNumber, 5).setValue(5000);
         result.updatedMay20 = true;
       }
-      if (targetDate === "2026-05-14" && profit === -11000) {
-        may14Rows.push(rowNumber);
+    });
+
+    SpreadsheetApp.flush();
+    lastRow = sheet.getLastRow();
+    if (lastRow < 2) return result;
+
+    rows = sheet.getRange(2, 1, lastRow - 1, CONFIG.RESULTS_HEADER.length).getValues();
+    var keepByKey = {};
+    var deleteRows = [];
+
+    rows.forEach(function(row, index) {
+      var rowNumber = index + 2;
+      var entry = normalizeExistingResultEntry_({
+        id: String(row[0] || ""),
+        rowNumber: rowNumber,
+        createdAt: row[1] instanceof Date ? row[1].toISOString() : String(row[1] || ""),
+        targetDate: normalizeDateCell_(row[2]),
+        kanshi: String(row[3] || "").trim(),
+        profit: Number(row[4] || 0),
+        store: String(row[5] || "").trim(),
+        machine: String(row[6] || "").trim(),
+        memo: String(row[7] || "").trim()
+      });
+      if (!entry) return;
+      var key = normalizeDateString_(entry.targetDate) + "|" + Number(entry.profit);
+      if (!KNOWN_SINGLE_ENTRY_TOTALS[key]) return;
+      var kept = keepByKey[key];
+      if (!kept) {
+        keepByKey[key] = entry;
+        return;
+      }
+      if (preferKnownSingleEntry_(entry, kept, key)) {
+        deleteRows.push(kept.rowNumber);
+        keepByKey[key] = entry;
+      } else {
+        deleteRows.push(rowNumber);
       }
     });
 
-    result.may14Kept = may14Rows.length ? 1 : 0;
-    may14Rows.slice(1).reverse().forEach(function(rowNumber) {
+    result.keptKnownDuplicateGroups = Object.keys(keepByKey).length;
+    deleteRows.sort(function(left, right) { return right - left; }).forEach(function(rowNumber) {
       sheet.deleteRow(rowNumber);
-      result.may14Deleted += 1;
+      result.deletedKnownDuplicates += 1;
     });
     return result;
   });

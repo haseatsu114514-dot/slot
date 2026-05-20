@@ -36,6 +36,26 @@ const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
 const SELECTED_MONTH_STORAGE_KEY = "slot-kanshi-selected-month-v1";
 const REMOTE_CACHE_KEY = "slot-kanshi-remote-cache-v1";
 const DELETED_ENTRY_KEYS_STORAGE_KEY = "slot-kanshi-deleted-entry-keys-v1";
+const KNOWN_ENTRY_REPAIRS = Object.freeze([
+  {
+    fromDate: "2026-05-04",
+    fromProfit: 54000,
+    targetDate: "2026-05-03",
+    profit: 51000
+  },
+  {
+    fromDate: "2026-05-20",
+    fromProfit: 7000,
+    targetDate: "2026-05-20",
+    profit: 5000
+  }
+]);
+const KNOWN_SINGLE_ENTRY_TOTALS = new Set([
+  "2026-05-03|51000",
+  "2026-05-07|-2500",
+  "2026-05-14|-11000",
+  "2026-05-20|5000"
+]);
 const THEMES = ["dark", "sepia", "light"];
 const INITIAL_SELECTED_DATE_KEY = getInitialSelectedDateKey(CONFIG);
 const INITIAL_SELECTED_MONTH_KEY = getInitialSelectedMonthKey(CONFIG, INITIAL_SELECTED_DATE_KEY);
@@ -1154,11 +1174,8 @@ function matchesCalendarFilter(day, recordedDates) {
 
 function getRecordedDateSet() {
   const set = new Set();
-  for (const entry of getVisibleRemoteEntries()) {
-    const key = normalizeTargetDate(entry?.targetDate);
-    if (key) set.add(key);
-  }
-  for (const entry of getVisibleLocalEntries()) {
+  const { entries } = getSanitizedSourceEntries();
+  for (const entry of entries) {
     const key = normalizeTargetDate(entry?.targetDate);
     if (key) set.add(key);
   }
@@ -1232,17 +1249,13 @@ function getSeedRecords() {
 }
 
 function getComputedRecords() {
-  const localEntries = getVisibleLocalEntries();
-  if (hasLocalEntryMasks()) {
-    return applyEntriesToRecords(getSeedRecords(), [...getVisibleRemoteEntries(), ...localEntries]);
-  }
-  const sourceRecords = state.remoteRecords || getSeedRecords();
-  return applyEntriesToRecords(sourceRecords, localEntries);
+  const { entries } = getDedupedAggregateEntries();
+  return applyEntriesToRecords(getSeedRecords(), entries);
 }
 
 function getAllEntries() {
-  const merged = [...getVisibleRemoteEntries(), ...getVisibleLocalEntries()];
-  return merged.sort((left, right) => {
+  const { entries } = getSanitizedSourceEntries();
+  return entries.sort((left, right) => {
     if (left.targetDate !== right.targetDate) {
       return left.targetDate < right.targetDate ? 1 : -1;
     }
@@ -1547,32 +1560,133 @@ function normalizeTargetDate(value) {
   return text;
 }
 
-function getDedupedAggregateEntries() {
+function getSanitizedSourceEntries() {
   const remoteEntries = getVisibleRemoteEntries();
   const localEntries = getVisibleLocalEntries();
   const hasRemote = Array.isArray(remoteEntries) && remoteEntries.length > 0;
   const source = hasRemote
     ? [...remoteEntries, ...localEntries]
     : [...localEntries];
+  const normalized = [];
+  const seenIdentityKeys = new Set();
 
-  // targetDate をキーに重複排除。createdAt が新しい方を優先。
-  const map = new Map();
   for (const raw of source) {
-    if (!raw || !raw.kanshi) continue;
-    if (!Number.isFinite(Number(raw.profit))) continue;
-    const normalizedDate = normalizeTargetDate(raw.targetDate);
-    if (!normalizedDate) continue;
-    const entry = { ...raw, targetDate: normalizedDate };
-    const key = normalizedDate;
-    const existing = map.get(key);
-    if (!existing) {
-      map.set(key, entry);
+    const entry = normalizeEntryForAggregation(raw);
+    if (!entry) continue;
+    const identityKey = getSourceIdentityKey(entry);
+    if (seenIdentityKeys.has(identityKey)) continue;
+    seenIdentityKeys.add(identityKey);
+    normalized.push(entry);
+  }
+
+  return { entries: collapseKnownAccidentalDuplicates(normalized), hasRemote };
+}
+
+function normalizeEntryForAggregation(raw) {
+  if (!raw) return null;
+  const normalizedDate = normalizeTargetDate(raw.targetDate);
+  const profit = Number(raw.profit);
+  if (!normalizedDate || !Number.isFinite(profit)) return null;
+
+  let entry = {
+    ...raw,
+    targetDate: normalizedDate,
+    kanshi: String(raw.kanshi || getKanshiForDateKey(normalizedDate, CONFIG)).trim(),
+    profit
+  };
+  if (!entry.kanshi) return null;
+  entry = applyKnownEntryRepair(entry);
+  entry.kanshi = String(entry.kanshi || getKanshiForDateKey(entry.targetDate, CONFIG)).trim();
+  return entry;
+}
+
+function applyKnownEntryRepair(entry) {
+  const repair = KNOWN_ENTRY_REPAIRS.find((item) =>
+    entry.targetDate === item.fromDate && Number(entry.profit) === item.fromProfit
+  );
+  if (!repair) return entry;
+  return {
+    ...entry,
+    targetDate: repair.targetDate,
+    kanshi: getKanshiForDateKey(repair.targetDate, CONFIG),
+    profit: repair.profit,
+    repairedFrom: {
+      targetDate: entry.targetDate,
+      profit: entry.profit
+    }
+  };
+}
+
+function getSourceIdentityKey(entry) {
+  const id = String(entry.id || "").trim();
+  if (id) return `id:${id}`;
+  return [
+    "exact",
+    normalizeTargetDate(entry.targetDate),
+    String(entry.kanshi || "").trim(),
+    Number(entry.profit || 0),
+    String(entry.store || "").trim(),
+    String(entry.machine || "").trim(),
+    String(entry.memo || "").trim()
+  ].join("|");
+}
+
+function collapseKnownAccidentalDuplicates(entries) {
+  const output = [];
+  const knownMap = new Map();
+  for (const entry of entries) {
+    const key = `${normalizeTargetDate(entry.targetDate)}|${Number(entry.profit)}`;
+    if (!KNOWN_SINGLE_ENTRY_TOTALS.has(key)) {
+      output.push(entry);
       continue;
     }
+    const existing = knownMap.get(key);
+    if (!existing || preferKnownSingleEntry(entry, existing, key)) {
+      knownMap.set(key, entry);
+    }
+  }
+
+  const knownEntries = Array.from(knownMap.values());
+  return [...output, ...knownEntries];
+}
+
+function preferKnownSingleEntry(candidate, existing, key) {
+  const candidateCreated = String(candidate.createdAt || "");
+  const existingCreated = String(existing.createdAt || "");
+  if (key === "2026-05-20|5000") {
+    return candidateCreated.localeCompare(existingCreated) > 0;
+  }
+  return candidateCreated.localeCompare(existingCreated) < 0;
+}
+
+function getDedupedAggregateEntries() {
+  const { entries: sourceEntries, hasRemote } = getSanitizedSourceEntries();
+  const map = new Map();
+  for (const entry of sourceEntries) {
+    const key = normalizeTargetDate(entry.targetDate);
+    const profit = Number(entry.profit);
+    if (!key || !Number.isFinite(profit)) continue;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, {
+        ...entry,
+        id: `daily-total-${key}`,
+        rowNumber: null,
+        targetDate: key,
+        kanshi: getKanshiForDateKey(key, CONFIG),
+        profit,
+        sourceCount: 1,
+        sourceEntryKeys: [getEntryKey(entry)]
+      });
+      continue;
+    }
+    existing.profit += profit;
+    existing.sourceCount += 1;
+    existing.sourceEntryKeys.push(getEntryKey(entry));
     const incomingCreated = String(entry.createdAt || "");
     const existingCreated = String(existing.createdAt || "");
     if (incomingCreated.localeCompare(existingCreated) > 0) {
-      map.set(key, entry);
+      existing.createdAt = entry.createdAt;
     }
   }
   return { entries: Array.from(map.values()), hasRemote };
@@ -1581,7 +1695,7 @@ function getDedupedAggregateEntries() {
 function getAggregateEntriesMap() {
   // 現在の Apps Script は「実績入力」の追加分だけを返していて、
   // 元シート由来の履歴までは remoteEntries に含めていない。
-  // そのため、集計は常にベース履歴 + 追加入力の合算で扱う。
+  // そのため、集計は常にベース履歴 + 日別合計に丸めた追加入力の合算で扱う。
   const { entries } = getDedupedAggregateEntries();
   return buildEntriesMap(SEED_MONTHLY_ENTRIES, entries);
 }
