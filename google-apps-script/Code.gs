@@ -104,11 +104,41 @@ function doPost(e) {
 
   if (body.action === "addResult") {
     const entry = normalizeEntry_(body.entry || {});
-    var appended = appendResultIfNew_(entry);
+    var addResult = appendResultIfNew_(entry, {
+      allowSameDateProfit: body.allowSameDateProfit === true
+    });
     var payload = buildDashboard_();
-    payload.appended = appended;
-    payload.duplicate = !appended;
+    payload.appended = addResult.appended;
+    payload.duplicate = addResult.duplicate;
+    payload.duplicateReason = addResult.duplicateReason || "";
     return json_(payload);
+  }
+
+  if (body.action === "updateResult") {
+    var updateResult = updateResult_(body.entry || {}, {
+      allowSameDateProfit: body.allowSameDateProfit === true
+    });
+    var updatePayload = buildDashboard_();
+    updatePayload.updated = updateResult.updated;
+    updatePayload.duplicate = updateResult.duplicate || false;
+    updatePayload.duplicateReason = updateResult.duplicateReason || "";
+    updatePayload.notFound = updateResult.notFound || false;
+    return json_(updatePayload);
+  }
+
+  if (body.action === "deleteResult") {
+    var deleteResult = deleteResult_(body || {});
+    var deletePayload = buildDashboard_();
+    deletePayload.deleted = deleteResult.deleted;
+    deletePayload.notFound = deleteResult.notFound || false;
+    return json_(deletePayload);
+  }
+
+  if (body.action === "repairRequestedEntries") {
+    var repairResult = repairRequestedEntries_();
+    var repairPayload = buildDashboard_();
+    repairPayload.repair = repairResult;
+    return json_(repairPayload);
   }
 
   return json_({ ok: false, error: "unknown_action" });
@@ -152,6 +182,7 @@ function buildDashboard_() {
       const record = records[entry.kanshi] || normalizeRecord_(entry.kanshi, {});
       return {
         id: entry.id,
+        rowNumber: entry.rowNumber,
         createdAt: entry.createdAt,
         targetDate: entry.targetDate,
         kanshi: entry.kanshi,
@@ -211,9 +242,10 @@ function readResultEntries_() {
 
   const rows = sheet.getRange(2, 1, lastRow - 1, CONFIG.RESULTS_HEADER.length).getValues();
   return rows
-    .map(function(row) {
+    .map(function(row, index) {
       return {
         id: String(row[0] || ""),
+        rowNumber: index + 2,
         createdAt: row[1] instanceof Date ? row[1].toISOString() : String(row[1] || ""),
         targetDate: normalizeDateCell_(row[2]),
         kanshi: String(row[3] || "").trim(),
@@ -228,29 +260,111 @@ function readResultEntries_() {
     });
 }
 
-function appendResultIfNew_(entry) {
-  const sheet = getResultsSheet_();
-  ensureHeader_(sheet, CONFIG.RESULTS_HEADER);
-  if (hasDuplicateEntry_(sheet, entry)) return false;
-  sheet.appendRow([
-    entry.id,
-    entry.createdAt,
-    entry.targetDate,
-    entry.kanshi,
-    entry.profit,
-    entry.store,
-    entry.machine,
-    entry.memo
-  ]);
-  return true;
+function appendResultIfNew_(entry, options) {
+  return withResultsLock_(function() {
+    const sheet = getResultsSheet_();
+    ensureHeader_(sheet, CONFIG.RESULTS_HEADER);
+    var duplicate = findDuplicateEntry_(sheet, entry, {
+      allowSameDateProfit: options && options.allowSameDateProfit
+    });
+    if (duplicate) {
+      return { appended: false, duplicate: true, duplicateReason: duplicate.reason };
+    }
+    sheet.appendRow(toResultRow_(entry));
+    return { appended: true, duplicate: false };
+  });
 }
 
-function hasDuplicateEntry_(sheet, entry) {
+function updateResult_(input, options) {
+  return withResultsLock_(function() {
+    const sheet = getResultsSheet_();
+    ensureHeader_(sheet, CONFIG.RESULTS_HEADER);
+    var rowNumber = findResultRowNumber_(sheet, input);
+    if (!rowNumber) return { updated: false, notFound: true };
+
+    var current = sheet.getRange(rowNumber, 1, 1, CONFIG.RESULTS_HEADER.length).getValues()[0];
+    var entry = normalizeEntry_({
+      id: input.id || current[0],
+      createdAt: input.createdAt || current[1],
+      targetDate: input.targetDate || current[2],
+      kanshi: input.kanshi || current[3],
+      profit: input.profit,
+      store: input.store || current[5],
+      machine: input.machine || current[6],
+      memo: input.memo
+    });
+    var duplicate = findDuplicateEntry_(sheet, entry, {
+      excludeRowNumber: rowNumber,
+      allowSameDateProfit: options && options.allowSameDateProfit
+    });
+    if (duplicate) {
+      return { updated: false, duplicate: true, duplicateReason: duplicate.reason };
+    }
+
+    sheet.getRange(rowNumber, 1, 1, CONFIG.RESULTS_HEADER.length).setValues([toResultRow_(entry)]);
+    return { updated: true, rowNumber: rowNumber };
+  });
+}
+
+function deleteResult_(input) {
+  return withResultsLock_(function() {
+    const sheet = getResultsSheet_();
+    ensureHeader_(sheet, CONFIG.RESULTS_HEADER);
+    var rowNumber = findResultRowNumber_(sheet, input);
+    if (!rowNumber) return { deleted: false, notFound: true };
+    sheet.deleteRow(rowNumber);
+    return { deleted: true, rowNumber: rowNumber };
+  });
+}
+
+function repairRequestedEntries_() {
+  return withResultsLock_(function() {
+    const sheet = getResultsSheet_();
+    ensureHeader_(sheet, CONFIG.RESULTS_HEADER);
+    var lastRow = sheet.getLastRow();
+    var result = {
+      updatedMay20: false,
+      may14Kept: 0,
+      may14Deleted: 0
+    };
+    if (lastRow < 2) return result;
+
+    var rows = sheet.getRange(2, 1, lastRow - 1, CONFIG.RESULTS_HEADER.length).getValues();
+    var may14Rows = [];
+
+    rows.forEach(function(row, index) {
+      var rowNumber = index + 2;
+      var targetDate = normalizeDateCell_(row[2]);
+      var profit = Number(row[4] || 0);
+      if (!result.updatedMay20 && targetDate === "2026-05-20" && profit === 7000) {
+        sheet.getRange(rowNumber, 5).setValue(5000);
+        result.updatedMay20 = true;
+      }
+      if (targetDate === "2026-05-14" && profit === -11000) {
+        may14Rows.push(rowNumber);
+      }
+    });
+
+    result.may14Kept = may14Rows.length ? 1 : 0;
+    may14Rows.slice(1).reverse().forEach(function(rowNumber) {
+      sheet.deleteRow(rowNumber);
+      result.may14Deleted += 1;
+    });
+    return result;
+  });
+}
+
+function findDuplicateEntry_(sheet, entry, options) {
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return false;
+  if (lastRow < 2) return null;
 
   var rows = sheet.getRange(2, 1, lastRow - 1, CONFIG.RESULTS_HEADER.length).getValues();
-  return rows.some(function(row) {
+  for (var index = 0; index < rows.length; index += 1) {
+    var rowNumber = index + 2;
+    if (options && options.excludeRowNumber && Number(options.excludeRowNumber) === rowNumber) {
+      continue;
+    }
+    var row = rows[index];
     var existing = {
       id: String(row[0] || ""),
       targetDate: normalizeDateCell_(row[2]),
@@ -260,8 +374,59 @@ function hasDuplicateEntry_(sheet, entry) {
       machine: String(row[6] || "").trim(),
       memo: String(row[7] || "").trim()
     };
-    return isSameEntry_(existing, entry);
-  });
+    if (isSameEntry_(existing, entry)) {
+      return { rowNumber: rowNumber, reason: "exact" };
+    }
+    if (
+      !(options && options.allowSameDateProfit) &&
+      normalizeDateString_(existing.targetDate) === normalizeDateString_(entry.targetDate) &&
+      Number(existing.profit || 0) === Number(entry.profit || 0)
+    ) {
+      return { rowNumber: rowNumber, reason: "same_date_profit" };
+    }
+  }
+  return null;
+}
+
+function findResultRowNumber_(sheet, input) {
+  var lastRow = sheet.getLastRow();
+  var rowNumber = Number(input.rowNumber || (input.entry && input.entry.rowNumber));
+  if (Number.isFinite(rowNumber) && rowNumber >= 2 && rowNumber <= lastRow) {
+    return rowNumber;
+  }
+
+  var id = String(input.id || (input.entry && input.entry.id) || "").trim();
+  if (!id || lastRow < 2) return 0;
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (var index = 0; index < ids.length; index += 1) {
+    if (String(ids[index][0] || "").trim() === id) {
+      return index + 2;
+    }
+  }
+  return 0;
+}
+
+function toResultRow_(entry) {
+  return [
+    entry.id,
+    entry.createdAt,
+    entry.targetDate,
+    entry.kanshi,
+    entry.profit,
+    entry.store,
+    entry.machine,
+    entry.memo
+  ];
+}
+
+function withResultsLock_(callback) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    return callback();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function isSameEntry_(left, right) {

@@ -55,7 +55,7 @@ const state = {
   calendarFilter: loadCalendarFilter(),
   statsScope: loadStatsScope(),
   goal: loadGoal(),
-  editingEntryId: null,
+  editingEntryKey: null,
   selectedMonthKey: INITIAL_SELECTED_MONTH_KEY
 };
 
@@ -80,9 +80,11 @@ const refs = {
   profitInput: document.getElementById("profitInput"),
   memoInput: document.getElementById("memoInput"),
   formPreview: document.getElementById("formPreview"),
+  duplicateWarning: document.getElementById("duplicateWarning"),
   formStatus: document.getElementById("formStatus"),
   retrySyncButton: document.getElementById("retrySyncButton"),
   saveButton: document.getElementById("saveButton"),
+  cancelEditButton: document.getElementById("cancelEditButton"),
   jumpTodayButton: document.getElementById("jumpTodayButton"),
   calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]")),
   performancePanel: document.getElementById("performancePanel"),
@@ -287,12 +289,20 @@ function wireEvents() {
   refs.playDateInput.addEventListener("input", () => {
     state.selectedDateKey = refs.playDateInput.value || CONFIG.anchorDate;
     updateFormPreview();
+    updateDuplicateWarning();
     render();
   });
+
+  refs.profitInput?.addEventListener("input", updateDuplicateWarning);
 
   refs.resultForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     await saveResult();
+  });
+
+  refs.cancelEditButton?.addEventListener("click", () => {
+    clearEditingState();
+    setFormStatus("編集をキャンセルしました。", "info");
   });
 
   refs.retrySyncButton.addEventListener("click", async () => {
@@ -603,6 +613,11 @@ function wireQuickInputPopover() {
       profit,
       memo: String(memoInput?.value || "").trim()
     };
+    const duplicate = findSameDateProfitEntry(entry, existing ? getEntryKey(existing) : null);
+    if (duplicate) {
+      const ok = window.confirm(`${dateKey} に ${formatYen(profit)} の記録がすでにあります。重複の可能性がありますが、このまま保存しますか？`);
+      if (!ok) return;
+    }
     addLocalEntry(entry);
     state.selectedDateKey = dateKey;
     setFormStatus(`${dateKey} の収支を保存しました (クイック入力)。`, "success");
@@ -1371,6 +1386,8 @@ function render() {
   renderRecentEntries();
   renderRankings(records);
   renderCharts();
+  updateEditingUi();
+  updateDuplicateWarning();
 }
 
 function renderPerformance() {
@@ -2331,32 +2348,30 @@ function renderRecentEntries() {
     return;
   }
 
-  const localIdSet = new Set(state.localEntries.map((entry) => entry.id).filter(Boolean));
+  const localKeys = new Set(state.localEntries.map(getEntryKey));
 
   refs.recentEntries.innerHTML = entries
-    .slice(0, 12)
+    .slice(0, 20)
     .map((entry) => {
       const info = buildDayInfo(entry.targetDate, records, getActiveConfig());
       const rating = info.rating;
-      const isLocal = localIdSet.has(entry.id);
-      const idAttr = entry.id ? entry.id : "";
+      const entryKey = getEntryKey(entry);
+      const isLocal = localKeys.has(entryKey);
       const pending = isLocal && entry.pendingSync === true;
       const originBadge = pending
         ? `<span class="recent-entry-origin is-pending" title="Sheetsへ未送信">Pending</span>`
         : isLocal
           ? `<span class="recent-entry-origin is-local" title="端末内のみ">Local</span>`
           : `<span class="recent-entry-origin is-sheets" title="Sheets由来">Sheets</span>`;
-      const actions = isLocal
-        ? `
-          <div class="recent-entry-actions">
-            ${originBadge}
-            <button type="button" class="recent-entry-edit" data-action="edit-entry" data-entry-id="${idAttr}">編集</button>
-            <button type="button" class="recent-entry-delete" data-action="delete-entry" data-entry-id="${idAttr}">削除</button>
-          </div>
-        `
-        : `<div class="recent-entry-actions">${originBadge}</div>`;
+      const actions = `
+        <div class="recent-entry-actions">
+          ${originBadge}
+          <button type="button" class="recent-entry-edit" data-action="edit-entry" data-entry-key="${escapeHtml(entryKey)}">編集</button>
+          <button type="button" class="recent-entry-delete" data-action="delete-entry" data-entry-key="${escapeHtml(entryKey)}">削除</button>
+        </div>
+      `;
       return `
-        <article class="recent-entry">
+        <article class="recent-entry ${state.editingEntryKey === entryKey ? "is-editing" : ""}">
           <div class="recent-entry-main">
             <div class="recent-entry-date">${entry.targetDate}</div>
             <strong>${entry.kanshi}</strong>
@@ -2380,42 +2395,147 @@ function renderRecentEntries() {
     .join("");
 }
 
-function handleRecentEntryClick(event) {
-  const target = event.target.closest("[data-action]");
-  if (!target) return;
-  const id = target.dataset.entryId;
+async function handleRecentEntryClick(event) {
+  const target = event.target.closest("[data-action][data-entry-key]");
+  if (!target || !refs.recentEntries?.contains(target)) return;
+  const entryKey = target.dataset.entryKey;
   const action = target.dataset.action;
-  if (!id || !action) return;
-  const entry = state.localEntries.find((e) => e.id === id);
+  if (!entryKey || !action) return;
+  const entry = findEntryByKey(entryKey);
   if (!entry) return;
 
   if (action === "edit-entry") {
-    refs.playDateInput.value = entry.targetDate;
-    refs.profitInput.value = entry.profit;
-    refs.memoInput.value = entry.memo || "";
-    state.editingEntryId = id;
-    state.selectedDateKey = entry.targetDate;
-    updateFormPreview();
-    setFormStatus(`${entry.targetDate} の記録を編集中です。保存で上書きされます。`, "info");
-    if (refs.resultForm && refs.resultForm.scrollIntoView) {
-      refs.resultForm.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    render();
+    startEditingEntry(entry);
     return;
   }
 
   if (action === "delete-entry") {
-    const ok = window.confirm(`${entry.targetDate} の記録を削除しますか？`);
-    if (!ok) return;
-    state.localEntries = state.localEntries.filter((e) => e.id !== id);
+    await deleteEntry(entry);
+  }
+}
+
+function getEntryKey(entry) {
+  if (!entry) return "";
+  if (entry.rowNumber) return `sheets-row-${entry.rowNumber}`;
+  if (entry.id) return `entry-id-${entry.id}`;
+  return `entry-${normalizeTargetDate(entry.targetDate) || "unknown"}-${entry.createdAt || ""}-${entry.profit || 0}`;
+}
+
+function findEntryByKey(entryKey) {
+  return getAllEntries().find((entry) => getEntryKey(entry) === entryKey) || null;
+}
+
+function isLocalEntry(entry) {
+  const entryKey = getEntryKey(entry);
+  return state.localEntries.some((localEntry) => getEntryKey(localEntry) === entryKey);
+}
+
+function findSameDateProfitEntry(entry, excludeEntryKey = null) {
+  const targetDate = normalizeTargetDate(entry?.targetDate);
+  const profit = Number(entry?.profit);
+  if (!targetDate || !Number.isFinite(profit)) return null;
+  return getAllEntries().find((existing) => {
+    if (excludeEntryKey && getEntryKey(existing) === excludeEntryKey) return false;
+    return normalizeTargetDate(existing.targetDate) === targetDate && Number(existing.profit) === profit;
+  }) || null;
+}
+
+function hasExactDuplicateEntry(entry, excludeEntryKey = null) {
+  return getAllEntries().some((existing) => {
+    if (excludeEntryKey && getEntryKey(existing) === excludeEntryKey) return false;
+    return isSameEntry(existing, entry);
+  });
+}
+
+function isSameEntry(left, right) {
+  if (left?.id && right?.id && left.id === right.id) return true;
+  return (
+    normalizeTargetDate(left?.targetDate) === normalizeTargetDate(right?.targetDate) &&
+    String(left?.kanshi || "").trim() === String(right?.kanshi || "").trim() &&
+    Number(left?.profit || 0) === Number(right?.profit || 0) &&
+    String(left?.memo || "").trim() === String(right?.memo || "").trim()
+  );
+}
+
+function updateDuplicateWarning() {
+  if (!refs.duplicateWarning) return;
+  const targetDate = normalizeTargetDate(refs.playDateInput?.value);
+  const profit = Number(refs.profitInput?.value);
+  const duplicate = findSameDateProfitEntry({ targetDate, profit }, state.editingEntryKey);
+
+  if (!targetDate || !Number.isFinite(profit) || !duplicate) {
+    refs.duplicateWarning.hidden = true;
+    refs.duplicateWarning.textContent = "";
+    return;
+  }
+
+  refs.duplicateWarning.hidden = false;
+  refs.duplicateWarning.textContent = `${targetDate} に ${formatYen(profit)} の記録がすでにあります。保存前に重複ではないか確認してください。`;
+}
+
+function updateEditingUi() {
+  const editing = Boolean(state.editingEntryKey);
+  if (refs.saveButton) refs.saveButton.textContent = editing ? "記録を更新する" : "成績を保存する";
+  if (refs.cancelEditButton) refs.cancelEditButton.hidden = !editing;
+}
+
+function startEditingEntry(entry) {
+  const entryKey = getEntryKey(entry);
+  state.editingEntryKey = entryKey;
+  state.selectedDateKey = normalizeTargetDate(entry.targetDate);
+  refs.playDateInput.value = state.selectedDateKey;
+  refs.profitInput.value = entry.profit;
+  refs.memoInput.value = entry.memo || "";
+  updateFormPreview();
+  updateEditingUi();
+  updateDuplicateWarning();
+  setFormStatus(`${state.selectedDateKey} の ${formatYen(entry.profit)} を編集中です。保存で上書きされます。`, "info");
+  if (refs.resultForm && refs.resultForm.scrollIntoView) {
+    refs.resultForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  render();
+}
+
+function clearEditingState() {
+  state.editingEntryKey = null;
+  refs.resultForm?.reset();
+  refs.playDateInput.value = state.selectedDateKey;
+  updateFormPreview();
+  updateEditingUi();
+  updateDuplicateWarning();
+  render();
+}
+
+async function deleteEntry(entry) {
+  const entryKey = getEntryKey(entry);
+  const ok = window.confirm(`${normalizeTargetDate(entry.targetDate)} の ${formatYen(entry.profit)} を削除しますか？`);
+  if (!ok) return;
+
+  if (isLocalEntry(entry)) {
+    state.localEntries = state.localEntries.filter((localEntry) => getEntryKey(localEntry) !== entryKey);
     persistLocalEntries();
-    if (state.editingEntryId === id) {
-      state.editingEntryId = null;
-      refs.resultForm?.reset();
-      refs.playDateInput.value = state.selectedDateKey;
-    }
-    setFormStatus(`${entry.targetDate} の記録を削除しました。`, "info");
+    if (state.editingEntryKey === entryKey) clearEditingState();
+    setFormStatus(`${normalizeTargetDate(entry.targetDate)} の記録を削除しました。`, "success");
     render();
+    return;
+  }
+
+  if (!CONFIG.syncEndpoint) {
+    setFormStatus("Sheets 同期が未設定のため、この記録は画面から削除できません。", "warn");
+    return;
+  }
+
+  setFormStatus("Sheets の記録を削除しています...", "info");
+  try {
+    await postResultMutation("deleteResult", {
+      id: entry.id || "",
+      rowNumber: entry.rowNumber || null
+    });
+    if (state.editingEntryKey === entryKey) clearEditingState();
+    setFormStatus(`${normalizeTargetDate(entry.targetDate)} の記録を削除しました。`, "success");
+    render();
+  } catch (error) {
+    setFormStatus("Sheets の削除に失敗しました。時間を置いてもう一度試してください。", "warn");
   }
 }
 
@@ -2985,13 +3105,12 @@ async function saveResult() {
     return;
   }
 
-  const existingEntry = state.editingEntryId
-    ? state.localEntries.find((e) => e.id === state.editingEntryId)
-    : null;
+  const existingEntry = state.editingEntryKey ? findEntryByKey(state.editingEntryKey) : null;
 
   const entry = {
-    id: existingEntry ? existingEntry.id : createEntryId(),
-    createdAt: existingEntry ? existingEntry.createdAt : new Date().toISOString(),
+    id: existingEntry?.id || createEntryId(),
+    rowNumber: existingEntry?.rowNumber || null,
+    createdAt: existingEntry?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     targetDate,
     kanshi: getKanshiForDateKey(targetDate, CONFIG),
@@ -3002,21 +3121,68 @@ async function saveResult() {
     pendingSync: CONFIG.syncEndpoint ? true : false
   };
 
+  const duplicate = findSameDateProfitEntry(entry, state.editingEntryKey);
+  const allowSameDateProfit = Boolean(duplicate);
+  if (duplicate) {
+    const ok = window.confirm(`${targetDate} に ${formatYen(profit)} の記録がすでにあります。重複の可能性がありますが、このまま保存しますか？`);
+    if (!ok) {
+      setFormStatus("同じ日付・同じ収支の記録があったため、保存を中止しました。", "warn");
+      updateDuplicateWarning();
+      return;
+    }
+  }
+
+  if (hasExactDuplicateEntry(entry, state.editingEntryKey)) {
+    setFormStatus("同じ日付・同じ収支・同じメモの記録がすでにあります。保存を中止しました。", "warn");
+    return;
+  }
+
   refs.saveButton.disabled = true;
   state.selectedDateKey = targetDate;
-  const wasEditing = state.editingEntryId === entry.id;
 
   try {
-    if (CONFIG.syncEndpoint && !wasEditing) {
-      const synced = await postEntryToSheets(entry);
-      if (synced) {
+    if (existingEntry) {
+      if (!isLocalEntry(existingEntry) && CONFIG.syncEndpoint) {
+        await postResultMutation("updateResult", {
+          entry,
+          allowSameDateProfit
+        });
         refs.resultForm.reset();
         refs.playDateInput.value = targetDate;
+        state.editingEntryKey = null;
         updateFormPreview();
-        setFormStatus("Google Sheets に保存し、カレンダーにも反映しました。", "success");
-        state.editingEntryId = null;
-        // Any previously-queued entries can now be drained.
-        drainPendingSyncQueue();
+        updateDuplicateWarning();
+        setFormStatus("Google Sheets の記録を更新しました。", "success");
+        render();
+        return;
+      }
+
+      addLocalEntry(entry);
+      refs.resultForm.reset();
+      refs.playDateInput.value = targetDate;
+      state.editingEntryKey = null;
+      updateFormPreview();
+      updateDuplicateWarning();
+      setFormStatus("ローカル記録を更新しました。", "success");
+      render();
+      return;
+    }
+
+    if (CONFIG.syncEndpoint) {
+      const syncResult = await postEntryToSheets(entry, { allowSameDateProfit });
+      if (syncResult) {
+        refs.resultForm.reset();
+        refs.playDateInput.value = targetDate;
+        state.editingEntryKey = null;
+        updateFormPreview();
+        updateDuplicateWarning();
+        setFormStatus(
+          syncResult.duplicate
+            ? "同じ日付・同じ収支の内容がすでにシートにあるため、重複追加はしませんでした。"
+            : "Google Sheets に保存し、カレンダーにも反映しました。",
+          syncResult.duplicate ? "warn" : "success"
+        );
+        if (!syncResult.duplicate) drainPendingSyncQueue();
         render();
         return;
       }
@@ -3026,21 +3192,23 @@ async function saveResult() {
     refs.resultForm.reset();
     refs.playDateInput.value = targetDate;
     updateFormPreview();
-    setFormStatus(
-      wasEditing
-        ? "ローカル記録を更新しました。Sheets 側には反映されないため、必要なら再入力してください。"
-        : "保存しました。同期 URL を設定するとシートにも反映されます。",
-      "info"
-    );
-    state.editingEntryId = null;
+    updateDuplicateWarning();
+    setFormStatus("保存しました。同期 URL を設定するとシートにも反映されます。", "info");
+    state.editingEntryKey = null;
     render();
   } catch (error) {
+    if (existingEntry && !isLocalEntry(existingEntry)) {
+      setFormStatus("Sheets の更新に失敗しました。入力内容はそのまま残してあります。", "warn");
+      render();
+      return;
+    }
     addLocalEntry(entry);
     refs.resultForm.reset();
     refs.playDateInput.value = targetDate;
     updateFormPreview();
+    updateDuplicateWarning();
     setFormStatus("通信に失敗したため一時的に保存しました。後で同期を再試行できます。", "warn");
-    state.editingEntryId = null;
+    state.editingEntryKey = null;
     render();
   } finally {
     refs.saveButton.disabled = false;
@@ -3060,7 +3228,14 @@ function addLocalEntry(entry) {
   persistLocalEntries();
 }
 
-async function postEntryToSheets(entry) {
+async function postEntryToSheets(entry, options = {}) {
+  return postResultMutation("addResult", {
+    entry,
+    allowSameDateProfit: Boolean(options.allowSameDateProfit)
+  });
+}
+
+async function postResultMutation(action, bodyPayload = {}) {
   const response = await fetch(CONFIG.syncEndpoint, {
     method: "POST",
     headers: {
@@ -3070,9 +3245,9 @@ async function postEntryToSheets(entry) {
       Accept: "application/json"
     },
     body: JSON.stringify({
-      action: "addResult",
+      action,
       secret: CONFIG.syncSecret || "",
-      entry
+      ...bodyPayload
     })
   });
 
@@ -3086,6 +3261,12 @@ async function postEntryToSheets(entry) {
   if (!response.ok || !payload.ok) {
     throw new Error(payload.error || "save failed");
   }
+  if (action === "updateResult" && !payload.updated) {
+    throw new Error(payload.duplicate ? "duplicate result" : "result not found");
+  }
+  if (action === "deleteResult" && !payload.deleted) {
+    throw new Error("result not found");
+  }
 
   state.remoteRecords = buildRecordsFromPayload(payload.records || {});
   state.remoteEntries = Array.isArray(payload.entries) ? payload.entries : [];
@@ -3094,7 +3275,7 @@ async function postEntryToSheets(entry) {
     mode: "online",
     message: "Google Sheets と同期しています。"
   };
-  return true;
+  return payload;
 }
 
 // Retries any localEntries marked pendingSync. Entries that successfully
