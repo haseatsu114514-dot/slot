@@ -35,7 +35,7 @@ Claude Code がこのリポジトリで作業する際のガイド。
 
 `kanshi-data.js` と `Code.gs` の双方に同じ実装がある。変更時は両方を同期させ、パリティテストを回す。
 
-- **評価記号** (`RATING_THRESHOLDS` / `getRating`): ★=スコア8以上、◎=7、○=5〜6、△=3〜4、×=2以下
+- **評価記号** (`RATING_THRESHOLDS` / `getRating`): ★=スコア8以上、◎=6.5以上、○=5以上、△=3以上、×=3未満（上から順に判定。日補正後のスコアは小数になり得る）
 - **seedScore**: `SEED_KANSHI_DATA` の `score`（手動 -6..9）
 - **blendExpected**: シュリンクブレンド `(avg * days + sendan * 2) / (days + 2)` — sendan を擬似サンプル k=2 として混ぜ、実績日数が増えるほど自然に実績寄りになる（days 上限なし）
 - **computeLiveScore**:
