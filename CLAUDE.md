@@ -4,12 +4,13 @@ Claude Code がこのリポジトリで作業する際のガイド。
 
 ## プロジェクト概要
 
-「打つべきかカレンダー」— Google Sheets の収支データをもとに、六十干支ごとの「打つべきか / 打たないべきか」を 3 か月カレンダーで表示する静的サイト。ビルドなしで `index.html` をそのまま開ける。
+「打つべきかカレンダー」— Google Sheets の収支データをもとに、六十干支ごとの「打つべきか / 打たないべきか」をカレンダーで表示する静的サイト。ビルドなしで `index.html` をそのまま開ける。
 
 ## 実行
 
 - ローカル確認: `index.html` をブラウザで直接開く（ビルド不要）
-- テスト: `node tests/kanshi-data.test.mjs`（フレームワーク無し、`node:assert` のみ）
+- テスト: `node tests/kanshi-data.test.mjs` と `node tests/code-gs-parity.test.mjs`（フレームワーク無し、`node:assert` のみ）
+  - `code-gs-parity` は `Code.gs` と `kanshi-data.js` のスコアリングが一致するかを vm サンドボックスで照合する。スコア計算を触ったら必ず両方実行
 - ホスティング: GitHub Pages などに静的配信
 - Sheets 同期: `google-apps-script/Code.gs` を Apps Script 側に貼り付け Web アプリとしてデプロイ、`window.SLOT_APP_CONFIG.syncEndpoint` に URL を設定
 
@@ -20,29 +21,42 @@ Claude Code がこのリポジトリで作業する際のガイド。
 - `kanshi-data.js` — 干支データ、干支計算、スコアリングロジック（**コアロジックはここ**）
 - `app.js` — 画面描画、フォーム、Sheets 同期
 - `service-worker.js` / `manifest.webmanifest` — PWA
-- `google-apps-script/Code.gs` — Sheets 連携。`kanshi-data.js` のスコア計算と**同じロジックをコピー**しているので、片方を変えたらもう片方も合わせる
-- `tests/kanshi-data.test.mjs` — 軽量テスト
+- `google-apps-script/Code.gs` — Sheets 連携。`kanshi-data.js` のスコア計算と**同じロジックをコピー**しているので、片方を変えたらもう片方も合わせる（`tests/code-gs-parity.test.mjs` が乖離を検知する）
+- `tests/kanshi-data.test.mjs` — コアロジックのテスト
+- `tests/code-gs-parity.test.mjs` — Code.gs と kanshi-data.js のパリティテスト
+
+## 表示範囲
+
+- 表示範囲は今日を基準に自動計算（既定: 過去 12 か月〜未来 3 か月、`getDynamicRange`）
+- `SLOT_APP_CONFIG` に `pastMonths` / `futureMonths` で幅を変更可能。`startMonth` と `monthCount` を両方指定すると固定レンジになる
+- カレンダーはグリッド / リスト（アジェンダ）の 2 表示。状態は localStorage に永続化
 
 ## スコアリング仕様（要点）
 
-`kanshi-data.js` と `Code.gs` の双方に同じ実装がある。変更時は両方を同期させる。
+`kanshi-data.js` と `Code.gs` の双方に同じ実装がある。変更時は両方を同期させ、パリティテストを回す。
 
 - **seedScore**: `SEED_KANSHI_DATA` の `score`（手動 -6..9）
-- **blendExpected**: `(avg * min(days,6) + sendan * 1.5) / (min(days,6) + 1.5)` — 実績とシートの占断を加重平均
-- **computeLiveScore**: `seedScore + clamp(round((liveBlend - seedBlend) / 12000), -3, +3)` を quality cap で頭打ち
+- **blendExpected**: シュリンクブレンド `(avg * days + sendan * 2) / (days + 2)` — sendan を擬似サンプル k=2 として混ぜ、実績日数が増えるほど自然に実績寄りになる（days 上限なし）
+- **computeLiveScore**:
+  1. `seedBased = clamp(seedScore + clamp(round((liveBlend - seedBlend) / 6000), -5, +5), -6, 9)`
+  2. `dataDriven`: avg の階段関数（25000→9 … -20000→1、それ未満 0。avg なしなら null）
+  3. `dataWeight = days / (days + 4)` で seedBased と dataDriven を加重平均
+  4. 最後に quality cap で頭打ち
 - **getQualityScoreCap**: avg/sendan/days/tags で上限を決める
   - `avg === null || days <= 0` → 4
-  - `avg < 0` → ≤4、`< 5000` → ≤6、`< 12000` → ≤7、`< 20000` → ≤8
-  - `sendan` も同様の段階でキャップ
-  - `days <= 1` → ≤6、`days === 2` かつ強候補でない → ≤8
+  - avg 階段: `< 0` → ≤4、`< 5000` → ≤6、`< 12000` → ≤7、`< 20000` → ≤8
+  - sendan 階段: `< 0` → ≤4、`< 5000` → ≤6、`< 10000` → ≤7、`< 18000` → ≤8
+    - 緩和: `days >= 5 && avg > sendan + 8000` で +1、`days >= 8 && avg > sendan + 14000` でさらに +1
+  - 失望キャップ: `days >= 5 && avg < sendan - 8000` なら avg 階段の cap まで引き下げ、`days >= 8 && avg < sendan - 14000` でさらに -1
+  - `days <= 1` → ≤6、`days === 2` かつ強候補（avg≥30000 かつ sendan≥20000）でない → ≤8
   - `実績×` タグ → ≤4、`要検証`/`データ無` タグ → ≤7
-- **buildDayInfo**: 日単位の補正（月干支ステータス・年金日・曜日・質感 playStyle）をかけてから再度 quality cap
+- **buildDayInfo**: 日単位の補正（月干支ステータス・年金日・曜日・質感 playStyle・九星）をかけてから再度 quality cap
 
 ## 干支・暦関連
 
 - 基準日: `2026-04-07` = `辛亥`（`DEFAULT_CONFIG.anchorDate` / `anchorKanshi`）
-- 月干支: 節入時刻 (`MONTH_PILLAR_TRANSITIONS`) で切り替え、JST 基準
-- 日家九星: `KYUSEI_SWITCH_POINTS`（夏至/冬至系の切替）から 1 日ずつ進退
+- 月干支: 節入時刻 (`MONTH_PILLAR_TRANSITIONS`) で切り替え、JST 正午基準。**2028 年末まで収録済み**。毎年 2 月に国立天文台の暦要項が出たら翌年分を追記する（カバー切れが近づくとテストが落ちる）
+- 日家九星: `KYUSEI_SWITCH_POINTS`（夏至/冬至に最も近い甲子日、180 日周期）から 1 日ずつ進退。2028 年分まで収録済み
 - 吉方位: `getKichoDirections` — 本命殺/本命的殺/五黄殺/暗剣殺/`badStars` を除外
 
 ## コード方針
@@ -50,10 +64,10 @@ Claude Code がこのリポジトリで作業する際のガイド。
 - 依存パッケージ無し。ESM モジュール (`.js`) で読み込む前提。`package.json` は無い
 - `kanshi-data.js` は**純粋関数の集まり**として保つ。DOM/fetch を入れない
 - 新しいロジックを加えるときは必ず `tests/kanshi-data.test.mjs` にケースを足す
-- `SEED_KANSHI_DATA` の `days` / `avg` は `SEED_MONTHLY_ENTRIES` と整合している必要がある（現状 `壬子` と `甲寅` で不整合あり — 直すときは両方）
+- `SEED_KANSHI_DATA` の `days` / `avg` は `SEED_MONTHLY_ENTRIES` と整合している必要がある（テストが照合する）
+- `index.html` / `service-worker.js` のキャッシュバスター (`?v=YYYYMMDDx`) は JS/CSS を変えたら更新する（`app.js` 内の `kanshi-data.js` import も忘れずに）
 
 ## 既知の改善余地
 
-- 現行の Spearman(score, avg) ≈ 0.57、Spearman(score, sendan) ≈ 0.83 — スコアは占断側に引っ張られがち
-- score 階段での順位逆転が複数（例: score 4 の mean が score 3 より悪い）
-- `壬子` `甲寅` の seed データと月次エントリが非同期
+- score 階段での順位逆転が複数（例: score 4 の mean が score 3 より悪い）— シュリンクブレンド導入後の Spearman は未再計測
+- `syncSecret` は静的サイトに平文で載るため、本質的なアクセス制御にはならない（README のセキュリティ注意を参照）

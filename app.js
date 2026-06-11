@@ -9,6 +9,7 @@ import {
   formatYen,
   getDaysInMonth,
   getOpportunityStatus,
+  getDynamicRange,
   getMonthSequence,
   getPlayStyle,
   getRating,
@@ -25,15 +26,22 @@ import {
   buildPastSeedEntries,
   SEED_MONTHLY_ENTRIES,
   KYUSEI_NAMES
-} from "./kanshi-data.js?v=20260417e";
+} from "./kanshi-data.js?v=20260611a";
 
-const CONFIG = resolveConfig(window.SLOT_APP_CONFIG || {});
+const USER_CONFIG = window.SLOT_APP_CONFIG || {};
+const CONFIG = resolveConfig(USER_CONFIG);
+// 表示範囲は今日を基準に自動追従させる (既定: 過去12か月〜未来3か月)。
+// 固定したい場合のみ SLOT_APP_CONFIG に startMonth と monthCount を両方指定する。
+if (!USER_CONFIG.startMonth || !USER_CONFIG.monthCount) {
+  Object.assign(CONFIG, getDynamicRange(getTodayDateKey(), USER_CONFIG));
+}
 const STORAGE_KEY = "slot-kanshi-local-results-v1";
 const FILTER_STORAGE_KEY = "slot-kanshi-calendar-filter-v1";
 const STATS_SCOPE_STORAGE_KEY = "slot-kanshi-stats-scope-v1";
 const GOAL_STORAGE_KEY = "slot-kanshi-goal-v1";
 const THEME_STORAGE_KEY = "slot-kanshi-theme-v1";
 const SELECTED_MONTH_STORAGE_KEY = "slot-kanshi-selected-month-v1";
+const CALENDAR_VIEW_STORAGE_KEY = "slot-kanshi-calendar-view-v1";
 const REMOTE_CACHE_KEY = "slot-kanshi-remote-cache-v1";
 const DELETED_ENTRY_KEYS_STORAGE_KEY = "slot-kanshi-deleted-entry-keys-v1";
 const KNOWN_ENTRY_REPAIRS = Object.freeze([
@@ -75,6 +83,7 @@ const state = {
   },
   upcomingExpanded: false,
   calendarFilter: loadCalendarFilter(),
+  calendarView: loadCalendarView(),
   statsScope: loadStatsScope(),
   goal: loadGoal(),
   editingEntryKey: null,
@@ -109,6 +118,7 @@ const refs = {
   cancelEditButton: document.getElementById("cancelEditButton"),
   jumpTodayButton: document.getElementById("jumpTodayButton"),
   calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]")),
+  calendarViewButtons: Array.from(document.querySelectorAll(".calendar-view-toggle [data-view]")),
   performancePanel: document.getElementById("performancePanel"),
   profitTrendChart: document.getElementById("profitTrendChart"),
   profitTrendTitle: document.getElementById("profitTrendTitle"),
@@ -363,6 +373,36 @@ function wireEvents() {
   });
   syncCalendarFilterButtons();
 
+  refs.calendarViewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const view = button.dataset.view;
+      if (!view || state.calendarView === view) return;
+      state.calendarView = view;
+      persistCalendarView();
+      syncCalendarViewButtons();
+      render();
+    });
+  });
+  syncCalendarViewButtons();
+
+  // 横スワイプで前月/翌月へ。縦スクロールと区別するため dx 優位のときだけ反応する。
+  let swipeStart = null;
+  refs.calendarGrid.addEventListener("touchstart", (event) => {
+    const touch = event.touches?.[0];
+    swipeStart = touch ? { x: touch.clientX, y: touch.clientY, time: Date.now() } : null;
+  }, { passive: true });
+  refs.calendarGrid.addEventListener("touchend", (event) => {
+    if (!swipeStart) return;
+    const touch = event.changedTouches?.[0];
+    const start = swipeStart;
+    swipeStart = null;
+    if (!touch || Date.now() - start.time > 600) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 2) return;
+    stepMonth(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
   refs.statsScopeButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const scope = button.dataset.statsScope;
@@ -509,19 +549,18 @@ function wireEvents() {
     if (setSelectedMonth(value)) render();
   });
 
-  refs.prevMonthButton?.addEventListener("click", () => {
-    const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
-    const keys = months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`);
-    const idx = keys.indexOf(state.selectedMonthKey);
-    if (idx > 0 && setSelectedMonth(keys[idx - 1])) render();
-  });
+  refs.prevMonthButton?.addEventListener("click", () => stepMonth(-1));
 
-  refs.nextMonthButton?.addEventListener("click", () => {
-    const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
-    const keys = months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`);
-    const idx = keys.indexOf(state.selectedMonthKey);
-    if (idx >= 0 && idx < keys.length - 1 && setSelectedMonth(keys[idx + 1])) render();
-  });
+  refs.nextMonthButton?.addEventListener("click", () => stepMonth(1));
+}
+
+function stepMonth(delta) {
+  const months = getMonthSequence(CONFIG.startMonth, CONFIG.monthCount);
+  const keys = months.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`);
+  const idx = keys.indexOf(state.selectedMonthKey);
+  const nextIdx = idx + delta;
+  if (idx < 0 || nextIdx < 0 || nextIdx >= keys.length) return;
+  if (setSelectedMonth(keys[nextIdx])) render();
 }
 
 function wireQuickInputPopover() {
@@ -531,8 +570,18 @@ function wireQuickInputPopover() {
   const profitInput = form?.querySelector("[name='profit']");
   const memoInput = form?.querySelector("[name='memo']");
   const closeBtn = popover.querySelector(".quick-input-close");
+  const signButton = form?.querySelector(".quick-input-sign");
   const dateLabel = popover.querySelector(".quick-input-date");
   const kanshiLabel = popover.querySelector(".quick-input-kanshi");
+
+  // スマホのテンキーにマイナスが無い環境向けに、ワンタップで符号を反転する。
+  signButton?.addEventListener("click", () => {
+    if (!profitInput) return;
+    const value = Number(profitInput.value);
+    if (!Number.isFinite(value) || value === 0) return;
+    profitInput.value = String(-value);
+    profitInput.focus({ preventScroll: true });
+  });
 
   let pressTimer = 0;
   let pressedKey = null;
@@ -1130,6 +1179,32 @@ function loadCalendarFilter() {
     /* ignore */
   }
   return "all";
+}
+
+function loadCalendarView() {
+  try {
+    const raw = window.localStorage.getItem(CALENDAR_VIEW_STORAGE_KEY);
+    if (raw === "grid" || raw === "list") return raw;
+  } catch (error) {
+    /* ignore */
+  }
+  return "grid";
+}
+
+function persistCalendarView() {
+  try {
+    window.localStorage.setItem(CALENDAR_VIEW_STORAGE_KEY, state.calendarView);
+  } catch (error) {
+    /* ignore */
+  }
+}
+
+function syncCalendarViewButtons() {
+  refs.calendarViewButtons.forEach((button) => {
+    const active = button.dataset.view === state.calendarView;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
 }
 
 function loadStatsScope() {
@@ -2242,6 +2317,7 @@ function renderCalendar(months) {
   const visibleMonths = months.filter(
     (m) => `${m.year}-${String(m.month).padStart(2, "0")}` === state.selectedMonthKey
   );
+  refs.calendarGrid.classList.toggle("is-list-view", state.calendarView === "list");
   refs.calendarGrid.innerHTML = visibleMonths
     .map((month) => {
       const targetDays = month.dayRows.filter((day) => day.record.score >= RATING_THRESHOLDS.goMin);
@@ -2296,6 +2372,17 @@ function renderCalendar(months) {
           `;
         })
         .join("");
+      const bodyHtml = state.calendarView === "list"
+        ? buildMonthListHtml(month, todayKey, recordedDates)
+        : `
+            <div class="weekday-row">
+              ${WEEKDAYS.map((weekday, index) => `<span class="weekday weekday-${index}">${weekday}</span>`).join("")}
+            </div>
+            <div class="month-day-grid">
+              ${dayCells}
+            </div>
+          `;
+
       return `
         <section class="month-panel is-open">
           <header class="month-panel-head">
@@ -2312,18 +2399,52 @@ function renderCalendar(months) {
             <p class="month-expectation">
               ★・◎・○だけ全部打つ想定: ${targetDays.length}日 / 期待収支 ${formatYen(expectedTotal)}
             </p>
-            <div class="weekday-row">
-              ${WEEKDAYS.map((weekday, index) => `<span class="weekday weekday-${index}">${weekday}</span>`).join("")}
-            </div>
-            <div class="month-day-grid">
-              ${dayCells}
-            </div>
+            ${bodyHtml}
           </article>
         </section>
       `;
     })
     .join("");
   updateMonthSelectorUI(months);
+}
+
+// リスト (アジェンダ) 表示: 月の日を縦に並べ、絞り込みに合わない日は非表示にする。
+// 行ごと data-date-key ボタンなので、グリッドと同じクリック/長押し操作がそのまま効く。
+function buildMonthListHtml(month, todayKey, recordedDates) {
+  const profitByDate = new Map();
+  for (const entry of getDedupedAggregateEntries().entries) {
+    profitByDate.set(entry.targetDate, Number(entry.profit));
+  }
+
+  const rows = month.dayRows
+    .filter((day) => matchesCalendarFilter(day, recordedDates))
+    .map((day) => {
+      const todayClass = day.dateKey === todayKey ? "is-today" : "";
+      const selectedClass = day.dateKey === state.selectedDateKey ? "is-selected" : "";
+      const profit = profitByDate.get(day.dateKey);
+      const hasProfit = recordedDates.has(day.dateKey) && Number.isFinite(profit);
+      return `
+        <button
+          class="day-list-row tier-${day.rating.tier} ${todayClass} ${selectedClass}"
+          type="button"
+          data-date-key="${day.dateKey}"
+        >
+          <span class="day-list-date">${day.month}/${day.day} <span class="day-list-weekday weekday-${day.weekday}">(${WEEKDAYS[day.weekday]})</span></span>
+          <strong class="day-list-rating">${day.rating.label}</strong>
+          <span class="day-list-kanshi">${day.kanshi}</span>
+          <span class="day-score-pill">${formatCompactScore(day.record.score)}</span>
+          <span class="day-list-style ${getToneClass(day.playStyle.tone)}">${day.playStyle.shortLabel}</span>
+          ${hasProfit ? `<span class="day-list-profit ${profit > 0 ? "is-plus" : profit < 0 ? "is-minus" : ""}">${formatYen(profit)}</span>` : ""}
+          ${day.dateKey === todayKey ? `<span class="day-today-badge" aria-hidden="true">Today</span>` : ""}
+        </button>
+      `;
+    })
+    .join("");
+
+  if (!rows) {
+    return `<p class="empty-text">この絞り込み条件に合う日はこの月にありません。</p>`;
+  }
+  return `<div class="month-day-list">${rows}</div>`;
 }
 
 function updateMonthSelectorUI(months) {

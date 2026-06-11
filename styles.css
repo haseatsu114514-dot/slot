@@ -1159,7 +1159,8 @@ details[open] .collapsible-arrow {
 .form-fab {
   position: fixed;
   right: 18px;
-  bottom: 18px;
+  /* iPhone のホームバーと重ならないようセーフエリアぶん持ち上げる */
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   z-index: 12;
   display: inline-flex;
   align-items: center;
@@ -1191,7 +1192,7 @@ details[open] .collapsible-arrow {
     padding: 10px 14px;
     font-size: 0.82rem;
     right: 12px;
-    bottom: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -1275,6 +1276,34 @@ html[data-theme="light"] .quick-input-inner {
   background: rgba(8, 10, 16, 0.5);
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+
+.quick-input-profit-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.quick-input-profit-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-input-sign {
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+html[data-theme="light"] .quick-input-sign,
+html[data-theme="sepia"] .quick-input-sign {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 html[data-theme="light"] .quick-input-field input,
@@ -1566,6 +1595,102 @@ html[data-theme="light"] .month-accordion-summary {
   z-index: 1;
   font-size: 0;
 }
+
+/* ============================= List (Agenda) View ============================= */
+
+.month-day-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.day-list-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  box-sizing: border-box;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.day-list-row:hover {
+  transform: translateY(-1px);
+}
+
+.day-list-row.is-selected {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px rgba(221, 187, 114, 0.48);
+}
+
+.day-list-row.is-today {
+  border-color: rgba(123, 179, 228, 0.85);
+  box-shadow: inset 0 0 0 2px rgba(123, 179, 228, 0.45);
+}
+
+.day-list-row .day-today-badge {
+  position: static;
+  font-size: 0.56rem;
+}
+
+.day-list-date {
+  min-width: 84px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.day-list-weekday {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.day-list-weekday.weekday-0 {
+  color: #f5a39d;
+}
+
+.day-list-weekday.weekday-6 {
+  color: #93c7ff;
+}
+
+.day-list-rating {
+  font-size: 1.05rem;
+  min-width: 1.4em;
+  text-align: center;
+}
+
+.day-list-kanshi {
+  font-family: "Zen Old Mincho", serif;
+  font-size: 1.02rem;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.day-list-row .day-score-pill {
+  font-size: 0.66rem;
+  padding: 3px 8px;
+}
+
+.day-list-style {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.day-list-profit {
+  margin-left: auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-list-profit.is-plus { color: var(--go); }
+.day-list-profit.is-minus { color: var(--avoid); }
 
 @media (min-width: 720px) {
   .day-today-badge {
@@ -2875,4 +3000,16 @@ html[data-theme="light"] .month-accordion-summary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ============================= Mobile Form Controls ============================= */
+
+/* iOS Safari は 16px 未満の入力欄にフォーカスすると画面を自動ズームするため、
+   モバイル幅ではフォーム部品のフォントを 16px に揃えてズームを防ぐ。 */
+@media (max-width: 719px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
