@@ -308,16 +308,18 @@ suite("blendExpected / 評価", () => {
     });
     assert.ok(computeLiveScore(record) <= 8, `expected <= 8, got ${computeLiveScore(record)}`);
   });
-  test("getRating は閾値で tier が変わる", () => {
+  test("getRating は閾値で tier が変わる (★はスコア8以上)", () => {
     assert.equal(getRating(9).tier, "perfect");
+    assert.equal(getRating(8).tier, "perfect");
     assert.equal(getRating(7).tier, "special");
     assert.equal(getRating(5).tier, "go");
     assert.equal(getRating(3).tier, "hold");
     assert.equal(getRating(0).tier, "avoid");
   });
-  test("isPerfectRecord", () => {
+  test("isPerfectRecord はスコア8以上で true", () => {
     assert.equal(isPerfectRecord({ score: 9 }), true);
-    assert.equal(isPerfectRecord({ score: 8 }), false);
+    assert.equal(isPerfectRecord({ score: 8 }), true);
+    assert.equal(isPerfectRecord({ score: 7 }), false);
     assert.equal(isPerfectRecord(null), false);
   });
 });

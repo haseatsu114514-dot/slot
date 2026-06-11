@@ -26,7 +26,7 @@ import {
   buildPastSeedEntries,
   SEED_MONTHLY_ENTRIES,
   KYUSEI_NAMES
-} from "./kanshi-data.js?v=20260611a";
+} from "./kanshi-data.js?v=20260611b";
 
 const USER_CONFIG = window.SLOT_APP_CONFIG || {};
 const CONFIG = resolveConfig(USER_CONFIG);
@@ -2219,8 +2219,8 @@ function renderRangeChip(months) {
 function renderSummary(summary) {
   refs.summaryCards.innerHTML = [
     buildSummaryCard("カレンダー日数", summary.total, `実績 ${summary.totalSamples}日`, "is-neutral"),
-    buildSummaryCard("★ 完璧", summary.perfect, `実績 ${summary.perfectSamples}日 / スコア9`, "is-perfect"),
-    buildSummaryCard("◎ 絶好", summary.special, `実績 ${summary.specialSamples}日 / スコア7-8`, "is-special"),
+    buildSummaryCard("★ 完璧", summary.perfect, `実績 ${summary.perfectSamples}日 / スコア8以上`, "is-perfect"),
+    buildSummaryCard("◎ 絶好", summary.special, `実績 ${summary.specialSamples}日 / スコア7`, "is-special"),
     buildSummaryCard("○ 行くべき", summary.go, `実績 ${summary.goSamples}日 / スコア5-6`, "is-go"),
     buildSummaryCard("△ どちらでも", summary.hold, `実績 ${summary.holdSamples}日 / スコア3-4`, "is-hold"),
     buildSummaryCard("× 見送り", summary.avoid, `実績 ${summary.avoidSamples}日 / スコア2以下`, "is-avoid"),

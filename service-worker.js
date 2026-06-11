@@ -1,12 +1,12 @@
 // Minimal service worker for the slot kanshi calendar.
 // Only caches local assets; remote fonts and the Sheets sync endpoint bypass cache.
-const CACHE_NAME = "slot-kanshi-v20260611a";
+const CACHE_NAME = "slot-kanshi-v20260611b";
 const CORE_ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=20260611a",
-  "./styles.css?v=20260611a",
-  "./kanshi-data.js?v=20260611a",
+  "./app.js?v=20260611b",
+  "./styles.css?v=20260611b",
+  "./kanshi-data.js?v=20260611b",
   "./calendar-kicho-label.js?v=20260416a",
   "./manifest.webmanifest"
 ];
