@@ -64,7 +64,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 });
 
 export const RATING_THRESHOLDS = Object.freeze({
-  perfectMin: 9,
+  perfectMin: 8,
   specialMin: 7,
   goMin: 5,
   holdMin: 3
@@ -1163,8 +1163,8 @@ export function aggregateByElement(stemRows, branchRows) {
 
 export function aggregateByRatingTier(records) {
   const tiers = [
-    { key: "perfect", label: "★ 完璧 (スコア9)", filter: (record) => isPerfectRecord(record) },
-    { key: "special", label: "◎ 絶好 (スコア7-8)", filter: (record) => record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(record) },
+    { key: "perfect", label: "★ 完璧 (スコア8+)", filter: (record) => isPerfectRecord(record) },
+    { key: "special", label: "◎ 絶好 (スコア7)", filter: (record) => record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(record) },
     { key: "go", label: "○ 行くべき (スコア5-6)", filter: (record) => record.score >= RATING_THRESHOLDS.goMin && record.score < RATING_THRESHOLDS.specialMin },
     { key: "hold", label: "△ どちらでも (スコア3-4)", filter: (record) => record.score >= RATING_THRESHOLDS.holdMin && record.score < RATING_THRESHOLDS.goMin },
     { key: "avoid", label: "× 見送り (スコア2以下)", filter: (record) => record.score < RATING_THRESHOLDS.holdMin }
