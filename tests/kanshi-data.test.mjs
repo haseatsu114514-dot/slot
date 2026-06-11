@@ -15,6 +15,10 @@ import {
   getDaysInMonth,
   getKanshiForDateKey,
   getMonthSequence,
+  getDynamicRange,
+  getMonthKanshiForDateKey,
+  MONTH_PILLAR_TRANSITIONS,
+  SEED_KANSHI_DATA,
   normalizeTags,
   toNumberOrNull,
   normalizeRecord,
@@ -136,6 +140,77 @@ suite("日付ユーティリティ", () => {
       "2026-12",
       "2027-1"
     ]);
+  });
+});
+
+suite("動的表示範囲", () => {
+  test("getDynamicRange は既定で過去12か月〜未来3か月 (計16か月)", () => {
+    const range = getDynamicRange("2026-06-11");
+    assert.equal(range.startMonth, "2025-06");
+    assert.equal(range.monthCount, 16);
+  });
+  test("年跨ぎでも startMonth が正しい", () => {
+    const range = getDynamicRange("2026-01-15", { pastMonths: 2, futureMonths: 1 });
+    assert.equal(range.startMonth, "2025-11");
+    assert.equal(range.monthCount, 4);
+  });
+  test("getMonthSequence と組むと今日の月を含み futureMonths 先で終わる", () => {
+    const range = getDynamicRange("2027-03-01");
+    const months = getMonthSequence(range.startMonth, range.monthCount);
+    assert.ok(months.some((m) => m.year === 2027 && m.month === 3));
+    const last = months[months.length - 1];
+    assert.equal(`${last.year}-${last.month}`, "2027-6");
+  });
+});
+
+suite("月干支 (節入り)", () => {
+  test("既存範囲: 2026-06-10 は 甲午", () => {
+    assert.equal(getMonthKanshiForDateKey("2026-06-10"), "甲午");
+  });
+  test("延長分: 立秋 2026-08-07 20:43 → 当日正午はまだ乙未、翌日から丙申", () => {
+    assert.equal(getMonthKanshiForDateKey("2026-08-07"), "乙未");
+    assert.equal(getMonthKanshiForDateKey("2026-08-08"), "丙申");
+  });
+  test("2027 立春 (02-04 10:46) は当日正午から 壬寅", () => {
+    assert.equal(getMonthKanshiForDateKey("2027-02-03"), "辛丑");
+    assert.equal(getMonthKanshiForDateKey("2027-02-04"), "壬寅");
+  });
+  test("2028 年末まで解決できる", () => {
+    assert.equal(getMonthKanshiForDateKey("2028-12-31"), "甲子");
+  });
+  test("月干支は節入りごとに干支順で1つ進む (打ち間違い検知)", () => {
+    for (let i = 1; i < MONTH_PILLAR_TRANSITIONS.length; i += 1) {
+      const prev = SEXAGENARY_CYCLE.indexOf(MONTH_PILLAR_TRANSITIONS[i - 1].kanshi);
+      const next = SEXAGENARY_CYCLE.indexOf(MONTH_PILLAR_TRANSITIONS[i].kanshi);
+      assert.equal(
+        next,
+        (prev + 1) % 60,
+        `${MONTH_PILLAR_TRANSITIONS[i - 1].kanshi} → ${MONTH_PILLAR_TRANSITIONS[i].kanshi}`
+      );
+    }
+  });
+  test("節入りデータが表示範囲 (今日+4か月) をカバーしている", () => {
+    const guard = new Date();
+    guard.setMonth(guard.getMonth() + 4);
+    const guardKey = formatDateKey(new Date(Date.UTC(guard.getFullYear(), guard.getMonth(), guard.getDate(), 12)));
+    const last = MONTH_PILLAR_TRANSITIONS[MONTH_PILLAR_TRANSITIONS.length - 1];
+    assert.ok(
+      last.startsAt.slice(0, 10) >= guardKey,
+      `節入りデータが ${last.startsAt.slice(0, 10)} までしか無い。国立天文台の暦要項から翌年分を kanshi-data.js に追記すること`
+    );
+  });
+});
+
+suite("seed データ整合性", () => {
+  test("SEED_KANSHI_DATA の days/avg が SEED_MONTHLY_ENTRIES と一致する", () => {
+    for (const [kanshi, values] of Object.entries(SEED_MONTHLY_ENTRIES)) {
+      const seed = SEED_KANSHI_DATA[kanshi];
+      assert.ok(seed, `${kanshi} の seed データが無い`);
+      const days = values.length;
+      const avg = days ? Math.round(values.reduce((sum, v) => sum + v, 0) / days) : null;
+      assert.equal(seed.days, days, `${kanshi} の days: seed=${seed.days} entries=${days}`);
+      assert.equal(seed.avg, avg, `${kanshi} の avg: seed=${seed.avg} entries=${avg}`);
+    }
   });
 });
 
@@ -324,6 +399,13 @@ suite("吉方位", () => {
 });
 
 suite("九星補正", () => {
+  test("2028 の陰遁/陽遁切替日は甲子日で、起点の星が正しい", () => {
+    assert.equal(getKanshiForDateKey("2028-06-08"), "甲子");
+    assert.equal(getKyuseiForDateKey("2028-06-08").number, 9);
+    assert.equal(getKanshiForDateKey("2028-12-05"), "甲子");
+    assert.equal(getKyuseiForDateKey("2028-12-05").number, 1);
+  });
+
   test("aggregateByKyusei は9星ぶんの集計を返す", () => {
     const rows = aggregateByKyusei(buildBaseRecords());
     assert.equal(rows.length, 9);

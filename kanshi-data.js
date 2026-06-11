@@ -70,6 +70,9 @@ export const RATING_THRESHOLDS = Object.freeze({
   holdMin: 3
 });
 
+// 節入時刻 (JST)。2026-2027 は国立天文台 暦要項、2028 は暦計算室 長期版より。
+// 末尾の節入り以降は最後の月干支のまま扱われるため、毎年 2 月に翌年の
+// 暦要項が公表されたら 1 年分を追記すること (tests がカバー切れを検知する)。
 const RAW_MONTH_PILLAR_TRANSITIONS = [
   { startsAt: "2025-05-05T14:57:00+09:00", kanshi: "辛巳" },
   { startsAt: "2025-06-05T18:57:00+09:00", kanshi: "壬午" },
@@ -85,7 +88,36 @@ const RAW_MONTH_PILLAR_TRANSITIONS = [
   { startsAt: "2026-04-05T03:40:00+09:00", kanshi: "壬辰" },
   { startsAt: "2026-05-05T20:49:00+09:00", kanshi: "癸巳" },
   { startsAt: "2026-06-06T00:48:00+09:00", kanshi: "甲午" },
-  { startsAt: "2026-07-07T10:57:00+09:00", kanshi: "乙未" }
+  { startsAt: "2026-07-07T10:57:00+09:00", kanshi: "乙未" },
+  { startsAt: "2026-08-07T20:43:00+09:00", kanshi: "丙申" },
+  { startsAt: "2026-09-07T23:41:00+09:00", kanshi: "丁酉" },
+  { startsAt: "2026-10-08T15:29:00+09:00", kanshi: "戊戌" },
+  { startsAt: "2026-11-07T18:52:00+09:00", kanshi: "己亥" },
+  { startsAt: "2026-12-07T11:53:00+09:00", kanshi: "庚子" },
+  { startsAt: "2027-01-05T23:10:00+09:00", kanshi: "辛丑" },
+  { startsAt: "2027-02-04T10:46:00+09:00", kanshi: "壬寅" },
+  { startsAt: "2027-03-06T04:40:00+09:00", kanshi: "癸卯" },
+  { startsAt: "2027-04-05T09:17:00+09:00", kanshi: "甲辰" },
+  { startsAt: "2027-05-06T02:25:00+09:00", kanshi: "乙巳" },
+  { startsAt: "2027-06-06T06:26:00+09:00", kanshi: "丙午" },
+  { startsAt: "2027-07-07T16:37:00+09:00", kanshi: "丁未" },
+  { startsAt: "2027-08-08T02:27:00+09:00", kanshi: "戊申" },
+  { startsAt: "2027-09-08T05:28:00+09:00", kanshi: "己酉" },
+  { startsAt: "2027-10-08T21:17:00+09:00", kanshi: "庚戌" },
+  { startsAt: "2027-11-08T00:39:00+09:00", kanshi: "辛亥" },
+  { startsAt: "2027-12-07T17:38:00+09:00", kanshi: "壬子" },
+  { startsAt: "2028-01-06T04:55:00+09:00", kanshi: "癸丑" },
+  { startsAt: "2028-02-04T16:31:00+09:00", kanshi: "甲寅" },
+  { startsAt: "2028-03-05T10:25:00+09:00", kanshi: "乙卯" },
+  { startsAt: "2028-04-04T15:03:00+09:00", kanshi: "丙辰" },
+  { startsAt: "2028-05-05T08:12:00+09:00", kanshi: "丁巳" },
+  { startsAt: "2028-06-05T12:16:00+09:00", kanshi: "戊午" },
+  { startsAt: "2028-07-06T22:30:00+09:00", kanshi: "己未" },
+  { startsAt: "2028-08-07T08:21:00+09:00", kanshi: "庚申" },
+  { startsAt: "2028-09-07T11:22:00+09:00", kanshi: "辛酉" },
+  { startsAt: "2028-10-08T03:09:00+09:00", kanshi: "壬戌" },
+  { startsAt: "2028-11-07T06:27:00+09:00", kanshi: "癸亥" },
+  { startsAt: "2028-12-06T23:25:00+09:00", kanshi: "甲子" }
 ];
 
 export const MONTH_PILLAR_TRANSITIONS = Object.freeze(
@@ -158,7 +190,7 @@ export const SEED_KANSHI_DATA = {
   "庚寅": { score: 3, ts: "劫財", avg: -25500, days: 2, sendan: 11921, tags: ["実績×"] },
   "丙辰": { score: 3, ts: "正官", avg: -7250, days: 2, sendan: 8356, tags: ["合・飛"] },
   "壬午": { score: 3, ts: "傷官", avg: -7000, days: 2, sendan: 8218, tags: [] },
-  "壬子": { score: 2, ts: "傷官", avg: 14333, days: 3, sendan: 4507, tags: ["空亡(半)"] },
+  "壬子": { score: 2, ts: "傷官", avg: 25750, days: 4, sendan: 4507, tags: ["空亡(半)"] },
   "壬辰": { score: 2, ts: "傷官", avg: -17500, days: 2, sendan: 8880, tags: ["合・飛", "実績×"] },
   "壬戌": { score: 2, ts: "傷官", avg: -6000, days: 2, sendan: 5768, tags: [] },
   "丁巳": { score: 2, ts: "偏官", avg: 2625, days: 4, sendan: 4853, tags: ["データ多"] },
@@ -166,7 +198,7 @@ export const SEED_KANSHI_DATA = {
   "乙亥": { score: 1, ts: "偏財", avg: 20500, days: 1, sendan: 10938, tags: [] },
   "乙酉": { score: 1, ts: "偏財", avg: 9500, days: 2, sendan: 525, tags: [] },
   "甲午": { score: 1, ts: "正財", avg: 3000, days: 2, sendan: 2611, tags: [] },
-  "甲寅": { score: 1, ts: "正財", avg: -9000, days: 1, sendan: 2528, tags: [] },
+  "甲寅": { score: 1, ts: "正財", avg: -15000, days: 2, sendan: 2528, tags: [] },
   "辛丑": { score: 1, ts: "比肩", avg: -28000, days: 1, sendan: 15154, tags: ["空亡(真)"] },
   "己卯": { score: 1, ts: "偏印", avg: 2750, days: 2, sendan: 8476, tags: ["冲"] },
   "戊申": { score: 1, ts: "印綬", avg: 6750, days: 2, sendan: 13986, tags: ["占断◎"] },
@@ -296,6 +328,19 @@ export function getKanshiForDateKey(dateKey, config = DEFAULT_CONFIG) {
   const diffDays = Math.round((targetDate.getTime() - anchorDate.getTime()) / 86400000);
   const cycleIndex = mod(anchorIndex + diffDays, SEXAGENARY_CYCLE.length);
   return SEXAGENARY_CYCLE[cycleIndex];
+}
+
+// 表示範囲を「今日を含む月」基準で動的に決める。
+// 固定の startMonth/monthCount を config に書かなくても、月が変われば自動で追従する。
+export function getDynamicRange(todayKey, { pastMonths = 12, futureMonths = 3 } = {}) {
+  const [yearText, monthText] = todayKey.split("-");
+  const monthIndex = Number(yearText) * 12 + (Number(monthText) - 1) - pastMonths;
+  const startYear = Math.floor(monthIndex / 12);
+  const startMonthNumber = mod(monthIndex, 12) + 1;
+  return {
+    startMonth: `${startYear}-${String(startMonthNumber).padStart(2, "0")}`,
+    monthCount: pastMonths + futureMonths + 1
+  };
 }
 
 export function getMonthSequence(startMonth, count) {
@@ -1177,13 +1222,16 @@ export const KYUSEI_NAMES = Object.freeze([
   "一白", "二黒", "三碧", "四緑", "五黄", "六白", "七赤", "八白", "九紫"
 ]);
 
+// 夏至/冬至に最も近い甲子日で陰遁/陽遁が切り替わる (180日周期)。
 const KYUSEI_SWITCH_POINTS = Object.freeze([
   { date: "2025-06-24", direction: "desc", star: 9 },
   { date: "2025-12-21", direction: "asc", star: 1 },
   { date: "2026-06-19", direction: "desc", star: 9 },
   { date: "2026-12-16", direction: "asc", star: 1 },
   { date: "2027-06-14", direction: "desc", star: 9 },
-  { date: "2027-12-11", direction: "asc", star: 1 }
+  { date: "2027-12-11", direction: "asc", star: 1 },
+  { date: "2028-06-08", direction: "desc", star: 9 },
+  { date: "2028-12-05", direction: "asc", star: 1 }
 ]);
 
 export function getKyuseiForDateKey(dateKey) {
