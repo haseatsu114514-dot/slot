@@ -448,6 +448,65 @@ function analyzeAnniversaries(dataset, seriesDaysMap, anniversaries) {
   return { explicit, autoScan: autoScan.slice(0, 40) };
 }
 
+/**
+ * 全機種の総合成績ランキング。ウォッチリスト外の「他に強い台」を見つける用。
+ * winRate は勝ち台数/延べ台数のプール値、meanDiff/meanGames は台数加重平均。
+ * recent は直近 recentDays 日のみの再集計（今も強いかを見る）。
+ */
+export function analyzeModels(dataset, lastDate, recentDays = 60) {
+  const byModel = new Map();
+  for (const m of dataset.models) {
+    if (!m.model) continue;
+    if (!byModel.has(m.model)) byModel.set(m.model, []);
+    byModel.get(m.model).push(m); // dataset.models は date 昇順
+  }
+  const cutoff = lastDate ? addDays(lastDate, -recentDays) : null;
+  const activeFrom = lastDate ? addDays(lastDate, -7) : null;
+  const agg = (xs) => {
+    let win = 0;
+    let total = 0;
+    let dSum = 0;
+    let dN = 0;
+    let gSum = 0;
+    let gN = 0;
+    for (const r of xs) {
+      if (r.win != null && r.total != null) {
+        win += r.win;
+        total += r.total;
+      }
+      const c = r.count ?? r.total ?? 1;
+      if (r.avgDiff != null) {
+        dSum += r.avgDiff * c;
+        dN += c;
+      }
+      if (r.avgGames != null) {
+        gSum += r.avgGames * c;
+        gN += c;
+      }
+    }
+    return { samples: total, winRate: total ? win / total : null, meanDiff: dN ? dSum / dN : null, meanGames: gN ? gSum / gN : null };
+  };
+  const rows = [];
+  for (const [model, list] of byModel) {
+    const all = agg(list);
+    const recent = agg(cutoff ? list.filter((r) => r.date >= cutoff) : []);
+    const last = list[list.length - 1];
+    rows.push({
+      model,
+      count: last.count ?? last.total ?? null, // 直近の設置台数
+      nDays: new Set(list.map((r) => r.date)).size, // 観測日数
+      samples: all.samples, // 延べサンプル（台×日）
+      winRate: all.winRate,
+      meanDiff: all.meanDiff,
+      meanGames: all.meanGames,
+      recent,
+      active: activeFrom ? list.some((r) => r.date >= activeFrom) : true, // 直近1週間に設置あり
+    });
+  }
+  rows.sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1));
+  return rows;
+}
+
 /** min-repo が付けている「状況」ラベルごとの成績 */
 function analyzeStatusLabels(days) {
   const byLabel = new Map();
@@ -528,11 +587,13 @@ export function analyze(dataset, config, opts = {}) {
       nMasked: days.filter((d) => d.masked).length,
       nDiffDays: diffDays.length,
       nUnits: dataset.units.length,
+      nModelRows: dataset.models.length,
       meanGames: mean(days.map((d) => d.avgGames)),
     },
     byDayOfMonth,
     byWeekday,
     eventGroups,
+    models: analyzeModels(dataset, days.length ? days[days.length - 1].date : null),
     statusLabels: analyzeStatusLabels(days),
     suffix: analyzeSuffix(dataset, eventDefs, iterations, rng),
     series: analyzeSeries(seriesDaysMap, eventDefs, iterations, rng),
