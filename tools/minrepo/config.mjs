@@ -13,8 +13,11 @@ export const CONFIG = {
   jitterMs: 800,
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 
-  // バックフィル範囲（か月）。まず半年。増やしたくなったら数字を上げて --backfill し直せば差分だけ取得する
-  backfillMonths: 6,
+  // バックフィル範囲（か月）。サンプル数確保のため1年。数字を上げて --backfill し直せば差分だけ取得する
+  backfillMonths: 12,
+
+  // 分析設定: iterations = 並べ替え検定の反復数（サンプル数）。多いほど p値が安定する（計算は遅くなる）
+  analysis: { iterations: 4000 },
 
   // 機種別詳細（?kishu=）の取得対象。
   //   mode: "watchlist" = 下の seriesWatchlist に該当する機種のみ / "all" = 全機種 / "none" = 取得しない
