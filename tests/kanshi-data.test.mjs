@@ -235,11 +235,15 @@ suite("blendExpected / 評価", () => {
   test("実績ゼロなら sendan をそのまま返す", () => {
     assert.equal(blendExpected(null, 5000, 0), 5000);
   });
-  test("実績多いほど avg 寄りになる", () => {
-    const result = blendExpected(10000, -2000, 5);
-    // (10000*5 + (-2000)*2) / 7 = 46000/7 ≈ 6571
-    assert.ok(result > 5000);
-    assert.ok(result < 10000);
+  test("ブレンドは sendan と avg の間に落ち、days が増えるほど avg 寄り", () => {
+    // k=6: (10000*5 + (-2000)*6) / 11 ≈ 3455 — days < k のうちは sendan 寄り
+    const few = blendExpected(10000, -2000, 5);
+    assert.ok(few > -2000);
+    assert.ok(few < 10000);
+    // days=12 で avg 側の重みが 2/3 になる: (10000*12 + (-2000)*6) / 18 = 6000
+    const many = blendExpected(10000, -2000, 12);
+    assert.ok(many > few);
+    assert.ok(many < 10000);
   });
   test("シュリンクブレンドは days に上限を設けず avg に寄り続ける", () => {
     // 旧実装は days を 6 で頭打ちしていたので、20 日と 6 日で同じ結果。
@@ -249,10 +253,11 @@ suite("blendExpected / 評価", () => {
     assert.ok(twenty > six, `${twenty} should be > ${six}`);
     assert.ok(twenty < 10000);
   });
-  test("computeLiveScore は +4000 円改善でも shift と data-driven blend で動く", () => {
-    // seed と live で +4000 円のずれ → seedBased = 5+1 = 6
+  test("computeLiveScore は avg 改善が data-driven blend 経由でスコアに乗る", () => {
+    // k=6: seedBlend = 10000、liveBlend = (15600*5 + 10000*6)/11 ≈ 12545
+    // shift = round(2545/6000) = 0 → seedBased = 5
     // dataDriven (avg=15600) = 7、days=5 で dataWeight = 5/9 ≈ 0.556
-    // blended = round(6*0.444 + 7*0.556) = round(6.556) = 7
+    // blended = round(5*0.444 + 7*0.556) = round(6.11) = 6
     const record = normalizeRecord("辛亥", {
       seedScore: 5,
       seedAvg: 10000,
@@ -262,7 +267,7 @@ suite("blendExpected / 評価", () => {
       days: 5,
       tags: []
     });
-    assert.equal(computeLiveScore(record), 7);
+    assert.equal(computeLiveScore(record), 6);
   });
   test("seedScore が低くても avg が高ければ days に応じて引き上がる", () => {
     // 庚子 のような「seedScore=4, avg=21333, days=3」想定

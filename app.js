@@ -26,7 +26,7 @@ import {
   buildPastSeedEntries,
   SEED_MONTHLY_ENTRIES,
   KYUSEI_NAMES
-} from "./kanshi-data.js?v=20260611c";
+} from "./kanshi-data.js?v=20260612a";
 
 const USER_CONFIG = window.SLOT_APP_CONFIG || {};
 const CONFIG = resolveConfig(USER_CONFIG);

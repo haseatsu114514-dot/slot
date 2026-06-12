@@ -762,9 +762,10 @@ function computeDataDrivenScore_(record) {
 function blendExpected_(avg, sendan, days) {
   const forecast = toNumberOrNull_(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
-  // シュリンクブレンド: sendan を k=2 の擬似サンプルとして混ぜ、
+  // シュリンクブレンド: sendan を k=6 の擬似サンプルとして混ぜ、
   // 実績 days が増えるほど自然に avg 寄りになる。days 上限を設けない。
-  const k = 2;
+  // k=6 は 159 日の leave-one-out 検証による (kanshi-data.js と同期)。
+  const k = 6;
   return (avg * days + forecast * k) / (days + k);
 }
 

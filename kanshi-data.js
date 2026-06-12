@@ -141,14 +141,18 @@ export const MONTH_BRANCH_STATUS_MAP = Object.freeze({
   "卯": ["冲"]
 });
 
+// 曜日補正は実日付つき 37 日の実測で裏付けが取れなかったため無効化中。
+// 旧値は 火+0.3 / 水-0.5 / 木+0.5 / 金+0.2 / 日-0.1 だったが、実測では
+// 木曜 n=4 平均 -20,500 円、水曜 n=7 平均 +9,500 円と符号すら逆だった。
+// 実日付サンプルが貯まって有意差が出たら adjustment を入れ直す。
 export const WEEKDAY_EFFECTS = Object.freeze({
-  0: Object.freeze({ adjustment: -0.1, label: "日曜はやや逆風", shortLabel: "日曜弱め", tone: "caution" }),
-  1: Object.freeze({ adjustment: 0, label: "月曜は中立", shortLabel: "月曜中立", tone: "neutral" }),
-  2: Object.freeze({ adjustment: 0.3, label: "火曜はやや追い風", shortLabel: "火曜追い風", tone: "good" }),
-  3: Object.freeze({ adjustment: -0.5, label: "水曜は弱め", shortLabel: "水曜弱め", tone: "rough" }),
-  4: Object.freeze({ adjustment: 0.5, label: "木曜は強めの追い風", shortLabel: "木曜強め", tone: "good" }),
-  5: Object.freeze({ adjustment: 0.2, label: "金曜はやや追い風", shortLabel: "金曜追い風", tone: "good" }),
-  6: Object.freeze({ adjustment: 0, label: "土曜は荒れやすく中立", shortLabel: "土曜中立", tone: "neutral" })
+  0: Object.freeze({ adjustment: 0, label: "日曜 (曜日補正は検証中につき無効)", shortLabel: "日曜", tone: "neutral" }),
+  1: Object.freeze({ adjustment: 0, label: "月曜 (曜日補正は検証中につき無効)", shortLabel: "月曜", tone: "neutral" }),
+  2: Object.freeze({ adjustment: 0, label: "火曜 (曜日補正は検証中につき無効)", shortLabel: "火曜", tone: "neutral" }),
+  3: Object.freeze({ adjustment: 0, label: "水曜 (曜日補正は検証中につき無効)", shortLabel: "水曜", tone: "neutral" }),
+  4: Object.freeze({ adjustment: 0, label: "木曜 (曜日補正は検証中につき無効)", shortLabel: "木曜", tone: "neutral" }),
+  5: Object.freeze({ adjustment: 0, label: "金曜 (曜日補正は検証中につき無効)", shortLabel: "金曜", tone: "neutral" }),
+  6: Object.freeze({ adjustment: 0, label: "土曜 (曜日補正は検証中につき無効)", shortLabel: "土曜", tone: "neutral" })
 });
 
 export const SPECIAL_DATE_EFFECTS = Object.freeze({
@@ -514,9 +518,12 @@ export function isPerfectRecord(record) {
 export function blendExpected(avg, sendan, days) {
   const forecast = toNumberOrNull(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
-  // シュリンクブレンド: sendan を k=2 の擬似サンプルとして混ぜ、
+  // シュリンクブレンド: sendan を k=6 の擬似サンプルとして混ぜ、
   // 実績 days が増えるほど自然に avg 寄りになる。days 上限を設けない。
-  const k = 2;
+  // k=6 は 159 日の leave-one-out 検証で順位相関が最大になった値
+  // (k=2: 0.142 / k=6: 0.198 で以降は頭打ち)。少サンプルの実績平均は
+  // ノイズが強く、days が 6 日を超えるまでは占断側を厚く見る。
+  const k = 6;
   return (avg * days + forecast * k) / (days + k);
 }
 
