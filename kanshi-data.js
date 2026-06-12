@@ -65,7 +65,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 
 export const RATING_THRESHOLDS = Object.freeze({
   perfectMin: 8,
-  specialMin: 7,
+  specialMin: 6.5,
   goMin: 5,
   holdMin: 3
 });
@@ -141,14 +141,18 @@ export const MONTH_BRANCH_STATUS_MAP = Object.freeze({
   "卯": ["冲"]
 });
 
+// 曜日補正は実日付つき 37 日の実測で裏付けが取れなかったため無効化中。
+// 旧値は 火+0.3 / 水-0.5 / 木+0.5 / 金+0.2 / 日-0.1 だったが、実測では
+// 木曜 n=4 平均 -20,500 円、水曜 n=7 平均 +9,500 円と符号すら逆だった。
+// 実日付サンプルが貯まって有意差が出たら adjustment を入れ直す。
 export const WEEKDAY_EFFECTS = Object.freeze({
-  0: Object.freeze({ adjustment: -0.1, label: "日曜はやや逆風", shortLabel: "日曜弱め", tone: "caution" }),
-  1: Object.freeze({ adjustment: 0, label: "月曜は中立", shortLabel: "月曜中立", tone: "neutral" }),
-  2: Object.freeze({ adjustment: 0.3, label: "火曜はやや追い風", shortLabel: "火曜追い風", tone: "good" }),
-  3: Object.freeze({ adjustment: -0.5, label: "水曜は弱め", shortLabel: "水曜弱め", tone: "rough" }),
-  4: Object.freeze({ adjustment: 0.5, label: "木曜は強めの追い風", shortLabel: "木曜強め", tone: "good" }),
-  5: Object.freeze({ adjustment: 0.2, label: "金曜はやや追い風", shortLabel: "金曜追い風", tone: "good" }),
-  6: Object.freeze({ adjustment: 0, label: "土曜は荒れやすく中立", shortLabel: "土曜中立", tone: "neutral" })
+  0: Object.freeze({ adjustment: 0, label: "日曜 (曜日補正は検証中につき無効)", shortLabel: "日曜", tone: "neutral" }),
+  1: Object.freeze({ adjustment: 0, label: "月曜 (曜日補正は検証中につき無効)", shortLabel: "月曜", tone: "neutral" }),
+  2: Object.freeze({ adjustment: 0, label: "火曜 (曜日補正は検証中につき無効)", shortLabel: "火曜", tone: "neutral" }),
+  3: Object.freeze({ adjustment: 0, label: "水曜 (曜日補正は検証中につき無効)", shortLabel: "水曜", tone: "neutral" }),
+  4: Object.freeze({ adjustment: 0, label: "木曜 (曜日補正は検証中につき無効)", shortLabel: "木曜", tone: "neutral" }),
+  5: Object.freeze({ adjustment: 0, label: "金曜 (曜日補正は検証中につき無効)", shortLabel: "金曜", tone: "neutral" }),
+  6: Object.freeze({ adjustment: 0, label: "土曜 (曜日補正は検証中につき無効)", shortLabel: "土曜", tone: "neutral" })
 });
 
 export const SPECIAL_DATE_EFFECTS = Object.freeze({
@@ -514,9 +518,12 @@ export function isPerfectRecord(record) {
 export function blendExpected(avg, sendan, days) {
   const forecast = toNumberOrNull(sendan, 0);
   if (avg === null || avg === undefined || days <= 0) return forecast;
-  // シュリンクブレンド: sendan を k=2 の擬似サンプルとして混ぜ、
+  // シュリンクブレンド: sendan を k=6 の擬似サンプルとして混ぜ、
   // 実績 days が増えるほど自然に avg 寄りになる。days 上限を設けない。
-  const k = 2;
+  // k=6 は 159 日の leave-one-out 検証で順位相関が最大になった値
+  // (k=2: 0.142 / k=6: 0.198 で以降は頭打ち)。少サンプルの実績平均は
+  // ノイズが強く、days が 6 日を超えるまでは占断側を厚く見る。
+  const k = 6;
   return (avg * days + forecast * k) / (days + k);
 }
 
@@ -904,6 +911,30 @@ export function buildEntriesMap(seedEntries = SEED_MONTHLY_ENTRIES, extraEntries
   return map;
 }
 
+// ============ 過去実績のシート移行サポート ============
+// 焼き込みの過去実績 (SEED_MONTHLY_ENTRIES 由来の avg/days) をシートの
+// 「実績入力」へ行として移行したとき、メモにこの目印を入れる。
+// この目印を含む行がエントリに存在する場合、アプリは焼き込みの avg/days を
+// 使わず、エントリ全量から実績を再構成する (二重計上の防止)。
+export const SEED_MIGRATION_MARKER = "[過去実績移行]";
+
+export function entriesIncludeMigratedSeed(entries = []) {
+  return entries.some((entry) => String(entry?.memo || "").includes(SEED_MIGRATION_MARKER));
+}
+
+// live の実績 (avg/days) をクリアし、キャリブレーション値
+// (seedScore / seedAvg / seedDays / sendan / tags) だけ残したレコード集合を返す。
+// この後 applyEntriesToRecords に全エントリを渡すと実績が再構成される。
+export function resetLiveHistory(records) {
+  return Object.fromEntries(
+    Object.entries(records).map(([name, record]) => {
+      const next = { ...record, avg: null, days: 0 };
+      next.score = computeLiveScore(next);
+      return [name, next];
+    })
+  );
+}
+
 // SEED_MONTHLY_ENTRIES は日付情報を持たないので、九星/曜日/日付別の集計に取り込めない。
 // 各干支について「参照日より前の最近 N 回の出現日」を割り当て、合成エントリとして返す。
 // excludeDates に既に実エントリのある (kanshi, dateKey) ペアを渡すと重複を避ける。
@@ -1164,10 +1195,10 @@ export function aggregateByElement(stemRows, branchRows) {
 export function aggregateByRatingTier(records) {
   const tiers = [
     { key: "perfect", label: "★ 完璧 (スコア8+)", filter: (record) => isPerfectRecord(record) },
-    { key: "special", label: "◎ 絶好 (スコア7)", filter: (record) => record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(record) },
-    { key: "go", label: "○ 行くべき (スコア5-6)", filter: (record) => record.score >= RATING_THRESHOLDS.goMin && record.score < RATING_THRESHOLDS.specialMin },
-    { key: "hold", label: "△ どちらでも (スコア3-4)", filter: (record) => record.score >= RATING_THRESHOLDS.holdMin && record.score < RATING_THRESHOLDS.goMin },
-    { key: "avoid", label: "× 見送り (スコア2以下)", filter: (record) => record.score < RATING_THRESHOLDS.holdMin }
+    { key: "special", label: "◎ 絶好 (スコア6.5-7.9)", filter: (record) => record.score >= RATING_THRESHOLDS.specialMin && !isPerfectRecord(record) },
+    { key: "go", label: "○ 行くべき (スコア5-6.4)", filter: (record) => record.score >= RATING_THRESHOLDS.goMin && record.score < RATING_THRESHOLDS.specialMin },
+    { key: "hold", label: "△ どちらでも (スコア3-4.9)", filter: (record) => record.score >= RATING_THRESHOLDS.holdMin && record.score < RATING_THRESHOLDS.goMin },
+    { key: "avoid", label: "× 見送り (スコア3未満)", filter: (record) => record.score < RATING_THRESHOLDS.holdMin }
   ];
 
   return tiers.map((tier) => {

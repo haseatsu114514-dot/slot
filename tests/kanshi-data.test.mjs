@@ -39,6 +39,9 @@ import {
   getKyuseiPerformanceContext,
   aggregateByRatingTier,
   buildPastSeedEntries,
+  entriesIncludeMigratedSeed,
+  resetLiveHistory,
+  SEED_MIGRATION_MARKER,
   SEED_MONTHLY_ENTRIES
 } from "../kanshi-data.js";
 
@@ -235,11 +238,15 @@ suite("blendExpected / 評価", () => {
   test("実績ゼロなら sendan をそのまま返す", () => {
     assert.equal(blendExpected(null, 5000, 0), 5000);
   });
-  test("実績多いほど avg 寄りになる", () => {
-    const result = blendExpected(10000, -2000, 5);
-    // (10000*5 + (-2000)*2) / 7 = 46000/7 ≈ 6571
-    assert.ok(result > 5000);
-    assert.ok(result < 10000);
+  test("ブレンドは sendan と avg の間に落ち、days が増えるほど avg 寄り", () => {
+    // k=6: (10000*5 + (-2000)*6) / 11 ≈ 3455 — days < k のうちは sendan 寄り
+    const few = blendExpected(10000, -2000, 5);
+    assert.ok(few > -2000);
+    assert.ok(few < 10000);
+    // days=12 で avg 側の重みが 2/3 になる: (10000*12 + (-2000)*6) / 18 = 6000
+    const many = blendExpected(10000, -2000, 12);
+    assert.ok(many > few);
+    assert.ok(many < 10000);
   });
   test("シュリンクブレンドは days に上限を設けず avg に寄り続ける", () => {
     // 旧実装は days を 6 で頭打ちしていたので、20 日と 6 日で同じ結果。
@@ -249,10 +256,11 @@ suite("blendExpected / 評価", () => {
     assert.ok(twenty > six, `${twenty} should be > ${six}`);
     assert.ok(twenty < 10000);
   });
-  test("computeLiveScore は +4000 円改善でも shift と data-driven blend で動く", () => {
-    // seed と live で +4000 円のずれ → seedBased = 5+1 = 6
+  test("computeLiveScore は avg 改善が data-driven blend 経由でスコアに乗る", () => {
+    // k=6: seedBlend = 10000、liveBlend = (15600*5 + 10000*6)/11 ≈ 12545
+    // shift = round(2545/6000) = 0 → seedBased = 5
     // dataDriven (avg=15600) = 7、days=5 で dataWeight = 5/9 ≈ 0.556
-    // blended = round(6*0.444 + 7*0.556) = round(6.556) = 7
+    // blended = round(5*0.444 + 7*0.556) = round(6.11) = 6
     const record = normalizeRecord("辛亥", {
       seedScore: 5,
       seedAvg: 10000,
@@ -262,7 +270,7 @@ suite("blendExpected / 評価", () => {
       days: 5,
       tags: []
     });
-    assert.equal(computeLiveScore(record), 7);
+    assert.equal(computeLiveScore(record), 6);
   });
   test("seedScore が低くても avg が高ければ days に応じて引き上がる", () => {
     // 庚子 のような「seedScore=4, avg=21333, days=3」想定
@@ -308,10 +316,12 @@ suite("blendExpected / 評価", () => {
     });
     assert.ok(computeLiveScore(record) <= 8, `expected <= 8, got ${computeLiveScore(record)}`);
   });
-  test("getRating は閾値で tier が変わる (★はスコア8以上)", () => {
+  test("getRating は閾値で tier が変わる (★=8以上, ◎=6.5以上)", () => {
     assert.equal(getRating(9).tier, "perfect");
     assert.equal(getRating(8).tier, "perfect");
     assert.equal(getRating(7).tier, "special");
+    assert.equal(getRating(6.5).tier, "special");
+    assert.equal(getRating(6).tier, "go");
     assert.equal(getRating(5).tier, "go");
     assert.equal(getRating(3).tier, "hold");
     assert.equal(getRating(0).tier, "avoid");
@@ -473,6 +483,44 @@ suite("過去サンプルの合成", () => {
     const synthetic = buildPastSeedEntries(SEED_MONTHLY_ENTRIES, refKey, undefined, exclude);
     const nezu = synthetic.filter((e) => e.kanshi === "壬子");
     assert.ok(nezu.every((e) => e.targetDate !== "2026-04-08"));
+  });
+});
+
+suite("過去実績のシート移行", () => {
+  test("entriesIncludeMigratedSeed はメモの目印で検知する", () => {
+    assert.equal(entriesIncludeMigratedSeed([]), false);
+    assert.equal(entriesIncludeMigratedSeed([{ memo: "ただのメモ" }]), false);
+    assert.equal(entriesIncludeMigratedSeed([{ memo: `${SEED_MIGRATION_MARKER} 日付は推定` }]), true);
+  });
+
+  test("resetLiveHistory + 全エントリ適用で焼き込みと同じ実績 (days/avg) に再構成される", () => {
+    const base = buildBaseRecords();
+    const seedEntries = [];
+    for (const [kanshi, values] of Object.entries(SEED_MONTHLY_ENTRIES)) {
+      for (const value of values) {
+        seedEntries.push({ kanshi, profit: value, targetDate: "2026-01-01", memo: SEED_MIGRATION_MARKER });
+      }
+    }
+    const rebuilt = applyEntriesToRecords(resetLiveHistory(base), seedEntries);
+    for (const [kanshi, record] of Object.entries(base)) {
+      assert.equal(rebuilt[kanshi].days, record.days, `${kanshi} days`);
+      // applyEntriesToRecords は逐次的に丸めるため ±2 円までの誤差は許容
+      const rebuiltAvg = rebuilt[kanshi].avg;
+      if (record.avg === null) assert.equal(rebuiltAvg, null, `${kanshi} avg null`);
+      else assert.ok(Math.abs(rebuiltAvg - record.avg) <= 2, `${kanshi} avg: ${rebuiltAvg} vs ${record.avg}`);
+    }
+  });
+
+  test("resetLiveHistory はキャリブレーション値 (seedScore/sendan) を保持する", () => {
+    const base = buildBaseRecords();
+    const reset = resetLiveHistory(base);
+    for (const [kanshi, record] of Object.entries(base)) {
+      assert.equal(reset[kanshi].seedScore, record.seedScore, kanshi);
+      assert.equal(reset[kanshi].sendan, record.sendan, kanshi);
+      assert.equal(reset[kanshi].seedAvg, record.seedAvg, kanshi);
+      assert.equal(reset[kanshi].days, 0, kanshi);
+      assert.equal(reset[kanshi].avg, null, kanshi);
+    }
   });
 });
 

@@ -365,6 +365,13 @@ a {
   gap: 18px;
 }
 
+/* グリッド子要素の min-width:auto による横はみ出し (パネル枠が画面外に出る) を防ぐ */
+.page-content > *,
+.overview-grid > *,
+.calendar-detail-grid > * {
+  min-width: 0;
+}
+
 .overview-grid {
   display: grid;
   gap: 16px;
@@ -2321,6 +2328,8 @@ html[data-theme="light"] .month-accordion-summary {
 .result-form label {
   display: grid;
   gap: 6px;
+  /* グリッド項目の min-width:auto による入力欄のはみ出しを防ぐ */
+  min-width: 0;
 }
 
 .result-form label span {
@@ -2331,11 +2340,25 @@ html[data-theme="light"] .month-accordion-summary {
 .result-form input,
 .result-form textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
+}
+
+.result-form textarea {
+  resize: vertical;
+}
+
+/* iOS Safari の日付入力はネイティブ描画で幅と角丸が崩れるため自前スタイルに統一 */
+.result-form input[type="date"],
+.calendar-jump input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 1.4em;
 }
 
 .form-wide,
@@ -3193,4 +3216,37 @@ textarea:focus-visible,
 
 ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(221, 187, 114, 0.45);
+}
+
+/* ============================= Recent Entries (Log) ============================= */
+
+.recent-entries-meta {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.recent-entries-more {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+
+.recent-entries-more:hover {
+  color: var(--text);
+  border-color: rgba(221, 187, 114, 0.45);
+  background: rgba(221, 187, 114, 0.08);
+}
+
+html[data-theme="light"] .recent-entries-more,
+html[data-theme="sepia"] .recent-entries-more {
+  border-color: rgba(0, 0, 0, 0.22);
+  background: rgba(0, 0, 0, 0.03);
 }

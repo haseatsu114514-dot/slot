@@ -24,9 +24,11 @@ import {
   aggregateByElement,
   aggregateByRatingTier,
   buildPastSeedEntries,
+  entriesIncludeMigratedSeed,
+  resetLiveHistory,
   SEED_MONTHLY_ENTRIES,
   KYUSEI_NAMES
-} from "./kanshi-data.js?v=20260611b";
+} from "./kanshi-data.js?v=20260612b";
 
 const USER_CONFIG = window.SLOT_APP_CONFIG || {};
 const CONFIG = resolveConfig(USER_CONFIG);
@@ -87,7 +89,9 @@ const state = {
   statsScope: loadStatsScope(),
   goal: loadGoal(),
   editingEntryKey: null,
-  selectedMonthKey: INITIAL_SELECTED_MONTH_KEY
+  selectedMonthKey: INITIAL_SELECTED_MONTH_KEY,
+  logSource: "all",
+  logVisibleLimit: 20
 };
 
 const refs = {
@@ -119,6 +123,7 @@ const refs = {
   jumpTodayButton: document.getElementById("jumpTodayButton"),
   calendarFilterButtons: Array.from(document.querySelectorAll(".calendar-filter [data-filter]")),
   calendarViewButtons: Array.from(document.querySelectorAll(".calendar-view-toggle [data-view]")),
+  logSourceButtons: Array.from(document.querySelectorAll(".log-source-filter [data-log-source]")),
   performancePanel: document.getElementById("performancePanel"),
   profitTrendChart: document.getElementById("profitTrendChart"),
   profitTrendTitle: document.getElementById("profitTrendTitle"),
@@ -384,6 +389,18 @@ function wireEvents() {
     });
   });
   syncCalendarViewButtons();
+
+  refs.logSourceButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const source = button.dataset.logSource;
+      if (!source || state.logSource === source) return;
+      state.logSource = source;
+      state.logVisibleLimit = 20;
+      syncLogSourceButtons();
+      renderRecentEntries();
+    });
+  });
+  syncLogSourceButtons();
 
   // 横スワイプで前月/翌月へ。縦スクロールと区別するため dx 優位のときだけ反応する。
   let swipeStart = null;
@@ -1207,6 +1224,14 @@ function syncCalendarViewButtons() {
   });
 }
 
+function syncLogSourceButtons() {
+  refs.logSourceButtons.forEach((button) => {
+    const active = button.dataset.logSource === state.logSource;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
 function loadStatsScope() {
   try {
     const raw = window.localStorage.getItem(STATS_SCOPE_STORAGE_KEY);
@@ -1325,7 +1350,13 @@ function getSeedRecords() {
 
 function getComputedRecords() {
   const { entries } = getDedupedAggregateEntries();
-  return applyEntriesToRecords(getSeedRecords(), entries);
+  // シートに「過去実績移行」行があるときは、焼き込みの avg/days は使わず
+  // エントリ全量 (移行分 + 通常入力分) から実績を再構成する (二重計上の防止)。
+  // シート未同期 (移行行が見えない) ときは従来どおり焼き込み実績にフォールバック。
+  const base = entriesIncludeMigratedSeed(entries)
+    ? resetLiveHistory(getSeedRecords())
+    : getSeedRecords();
+  return applyEntriesToRecords(base, entries);
 }
 
 function getAllEntries() {
@@ -1768,17 +1799,18 @@ function getDedupedAggregateEntries() {
 }
 
 function getAggregateEntriesMap() {
-  // 現在の Apps Script は「実績入力」の追加分だけを返していて、
-  // 元シート由来の履歴までは remoteEntries に含めていない。
-  // そのため、集計は常にベース履歴 + 日別合計に丸めた追加入力の合算で扱う。
+  // 過去実績がシートへ移行済みならエントリ全量がそのまま全履歴。
+  // 未移行なら焼き込みのベース履歴 + 追加入力の合算で扱う。
   const { entries } = getDedupedAggregateEntries();
-  return buildEntriesMap(SEED_MONTHLY_ENTRIES, entries);
+  return buildEntriesMap(entriesIncludeMigratedSeed(entries) ? {} : SEED_MONTHLY_ENTRIES, entries);
 }
 
 // 九星/曜日/日付別の集計用に、SEED_MONTHLY_ENTRIES の各値へ
 // 「最近の過去出現日」を割り当てた合成エントリを足す。
 // 既に実エントリがある (kanshi, dateKey) は除外して二重計上を防ぐ。
 function mergeWithPastSeedEntries(realEntries = []) {
+  // 移行済みなら realEntries に過去実績 (日付つき) が既に含まれている。
+  if (entriesIncludeMigratedSeed(realEntries)) return [...realEntries];
   const referenceDateKey = getTodayDateKey();
   const exclude = new Set();
   for (const entry of realEntries) {
@@ -2026,17 +2058,18 @@ function aggregateEntriesByDayOfMonth(entries = []) {
 
 function computeLifetimeStats() {
   const profits = [];
-  // 元シートの過去履歴 (SEED_MONTHLY_ENTRIES) は日付を持たないが金額は記録されている。
-  // 全期間サマリーでは日数・合計・勝率に算入する。
-  for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
-    if (!Array.isArray(values)) continue;
-    for (const value of values) {
-      const profit = Number(value);
-      if (Number.isFinite(profit)) profits.push(profit);
+  const { entries } = getDedupedAggregateEntries();
+  // 元シートの過去履歴は、シートへ移行済みなら entries に含まれている。
+  // 未移行のときだけ焼き込み (SEED_MONTHLY_ENTRIES) を算入する。
+  if (!entriesIncludeMigratedSeed(entries)) {
+    for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
+      if (!Array.isArray(values)) continue;
+      for (const value of values) {
+        const profit = Number(value);
+        if (Number.isFinite(profit)) profits.push(profit);
+      }
     }
   }
-  // アプリ経由で追加された remote + local エントリ（重複排除済み）。
-  const { entries } = getDedupedAggregateEntries();
   for (const entry of entries) {
     const profit = Number(entry?.profit);
     if (Number.isFinite(profit)) profits.push(profit);
@@ -2220,10 +2253,10 @@ function renderSummary(summary) {
   refs.summaryCards.innerHTML = [
     buildSummaryCard("カレンダー日数", summary.total, `実績 ${summary.totalSamples}日`, "is-neutral"),
     buildSummaryCard("★ 完璧", summary.perfect, `実績 ${summary.perfectSamples}日 / スコア8以上`, "is-perfect"),
-    buildSummaryCard("◎ 絶好", summary.special, `実績 ${summary.specialSamples}日 / スコア7`, "is-special"),
-    buildSummaryCard("○ 行くべき", summary.go, `実績 ${summary.goSamples}日 / スコア5-6`, "is-go"),
-    buildSummaryCard("△ どちらでも", summary.hold, `実績 ${summary.holdSamples}日 / スコア3-4`, "is-hold"),
-    buildSummaryCard("× 見送り", summary.avoid, `実績 ${summary.avoidSamples}日 / スコア2以下`, "is-avoid"),
+    buildSummaryCard("◎ 絶好", summary.special, `実績 ${summary.specialSamples}日 / スコア6.5-7.9`, "is-special"),
+    buildSummaryCard("○ 行くべき", summary.go, `実績 ${summary.goSamples}日 / スコア5-6.4`, "is-go"),
+    buildSummaryCard("△ どちらでも", summary.hold, `実績 ${summary.holdSamples}日 / スコア3-4.9`, "is-hold"),
+    buildSummaryCard("× 見送り", summary.avoid, `実績 ${summary.avoidSamples}日 / スコア3未満`, "is-avoid"),
     buildSummaryCard("九星追い風", summary.kyuseiGood, "+補正の日", "is-kyusei-good"),
     buildSummaryCard("九星注意", summary.kyuseiBad, "-補正の日", "is-kyusei-caution")
   ].join("") + renderLifetimeCards(summary.lifetime);
@@ -2621,18 +2654,44 @@ function renderSelectedDay() {
 
 function renderRecentEntries() {
   if (!refs.recentEntries) return;
-  const entries = getAllEntries();
+  const allEntries = getAllEntries();
   const records = getComputedRecords();
+  const localKeys = new Set(getVisibleLocalEntries().map(getEntryKey));
+
+  const localCount = allEntries.filter((entry) => localKeys.has(getEntryKey(entry))).length;
+  const sheetsCount = allEntries.length - localCount;
+  const metaHtml = `
+    <p class="recent-entries-meta">
+      全 ${allEntries.length}件 (シート ${sheetsCount}件 / アプリ保存 ${localCount}件)
+      ${state.sync.mode === "offline" ? " — シート未接続のため端末内の記録のみ" : ""}
+    </p>
+  `;
+
+  const entries = state.logSource === "local"
+    ? allEntries.filter((entry) => localKeys.has(getEntryKey(entry)))
+    : state.logSource === "sheets"
+      ? allEntries.filter((entry) => !localKeys.has(getEntryKey(entry)))
+      : allEntries;
 
   if (!entries.length) {
-    refs.recentEntries.innerHTML = `<p class="empty-text">まだ成績入力はありません。</p>`;
+    const emptyText = state.logSource === "local"
+      ? "アプリ (この端末) で保存した記録はありません。"
+      : state.logSource === "sheets"
+        ? (state.sync.mode === "offline"
+          ? "シート未接続です。同期するとシートの記録がここに表示されます。"
+          : "シート由来の記録はまだありません。")
+        : "まだ成績入力はありません。";
+    refs.recentEntries.innerHTML = metaHtml + `<p class="empty-text">${emptyText}</p>`;
     return;
   }
 
-  const localKeys = new Set(getVisibleLocalEntries().map(getEntryKey));
+  const visibleEntries = entries.slice(0, state.logVisibleLimit);
+  const remaining = entries.length - visibleEntries.length;
+  const moreHtml = remaining > 0
+    ? `<button type="button" class="recent-entries-more" data-action="show-more-entries">さらに表示 (残り ${remaining}件)</button>`
+    : "";
 
-  refs.recentEntries.innerHTML = entries
-    .slice(0, 20)
+  refs.recentEntries.innerHTML = metaHtml + visibleEntries
     .map((entry) => {
       const info = buildDayInfo(entry.targetDate, records, getActiveConfig());
       const rating = info.rating;
@@ -2673,10 +2732,16 @@ function renderRecentEntries() {
         </article>
       `;
     })
-    .join("");
+    .join("") + moreHtml;
 }
 
 async function handleRecentEntryClick(event) {
+  const moreButton = event.target.closest("[data-action='show-more-entries']");
+  if (moreButton && refs.recentEntries?.contains(moreButton)) {
+    state.logVisibleLimit += 30;
+    renderRecentEntries();
+    return;
+  }
   const target = event.target.closest("[data-action][data-entry-key]");
   if (!target || !refs.recentEntries?.contains(target)) return;
   const entryKey = target.dataset.entryKey;
