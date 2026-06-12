@@ -11,6 +11,7 @@ Claude Code がこのリポジトリで作業する際のガイド。
 - ローカル確認: `index.html` をブラウザで直接開く（ビルド不要）
 - テスト: `node tests/kanshi-data.test.mjs` と `node tests/code-gs-parity.test.mjs`（フレームワーク無し、`node:assert` のみ）
   - `code-gs-parity` は `Code.gs` と `kanshi-data.js` のスコアリングが一致するかを vm サンドボックスで照合する。スコア計算を触ったら必ず両方実行
+  - `tools/minrepo` を触ったら `node tests/minrepo-parse.test.mjs` と `node tests/minrepo-analyze.test.mjs` も実行
 - ホスティング: GitHub Pages などに静的配信
 - Sheets 同期: `google-apps-script/Code.gs` を Apps Script 側に貼り付け Web アプリとしてデプロイ、`window.SLOT_APP_CONFIG.syncEndpoint` に URL を設定
 
@@ -24,6 +25,7 @@ Claude Code がこのリポジトリで作業する際のガイド。
 - `google-apps-script/Code.gs` — Sheets 連携。`kanshi-data.js` のスコア計算と**同じロジックをコピー**しているので、片方を変えたらもう片方も合わせる（`tests/code-gs-parity.test.mjs` が乖離を検知する）
 - `tests/kanshi-data.test.mjs` — コアロジックのテスト
 - `tests/code-gs-parity.test.mjs` — Code.gs と kanshi-data.js のパリティテスト
+- `tools/minrepo/` — タイホウ亀島店の min-repo データ取得・分析ツール（カレンダー本体とは独立、詳細は `tools/minrepo/README.md`）。取得データ `tools/minrepo/data/` は gitignore 済みでコミットしない
 
 ## 表示範囲
 

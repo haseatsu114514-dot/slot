@@ -1,0 +1,482 @@
+// analysis.json から「サイト風」ダッシュボード HTML と Markdown ダイジェストを生成する。純粋関数のみ。
+// 出力はスマホ対応・単一ファイル（そのまま誰かに送っても開ける）。
+
+import { formatSigned, toDateParts, nthWeekdayOfMonth, addDays } from "./util.mjs";
+import { matchesEvent } from "./analyze.mjs";
+
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+
+function pct(v, digits = 1) {
+  return v == null ? "-" : `${(v * 100).toFixed(digits)}%`;
+}
+
+function pctPt(v, digits = 1) {
+  return v == null ? "-" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(digits)}pt`;
+}
+
+function num(v, digits = 0) {
+  return v == null ? "-" : Number(v).toLocaleString("ja-JP", { maximumFractionDigits: digits });
+}
+
+function pv(p) {
+  if (p == null) return "-";
+  const s = p < 0.001 ? "<0.001" : p.toFixed(3);
+  return p < 0.05 ? `<b>${s}</b>` : s;
+}
+
+/** -1..1 に正規化した値を背景色にする（負=青, 正=赤） */
+function heat(v, scale) {
+  if (v == null || !Number.isFinite(v)) return "";
+  const t = Math.max(-1, Math.min(1, v / scale));
+  const alpha = Math.abs(t) * 0.5;
+  const color = t >= 0 ? `rgba(229,57,53,${alpha})` : `rgba(30,136,229,${alpha})`;
+  return ` style="background:${color}"`;
+}
+
+function table(headers, rows, { sortable = true } = {}) {
+  const head = headers.map((h) => `<th>${h}</th>`).join("");
+  const body = rows.map((cells) => `<tr>${cells.join("")}</tr>`).join("\n");
+  return `<div class="tw"><table class="${sortable ? "sortable" : ""}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+const td = (content, attr = "") => `<td${attr}>${content}</td>`;
+
+function dayObj(date) {
+  const p = toDateParts(date);
+  return { ...p, nthWeekday: nthWeekdayOfMonth(date) };
+}
+
+/** 今後 horizon 日のうち、検証済みイベント日仮説に当たる日を強い順に出す */
+export function upcomingDays(analysis, today, horizon = 14) {
+  const out = [];
+  for (let i = 0; i < horizon; i++) {
+    const date = addDays(today, i);
+    const day = dayObj(date);
+    const hits = [];
+    let score = 0;
+    for (const g of analysis.eventGroups) {
+      if (!g.def || !matchesEvent(day, g.def)) continue;
+      const u = g.win.uplift;
+      const significant = u != null && u > 0.01 && g.win.p != null && g.win.p < 0.2 && g.win.nEvent >= 5;
+      hits.push({ label: g.label, uplift: u, significant });
+      if (significant) score += u;
+    }
+    if (hits.length) out.push({ date, weekday: day.weekday, hits, score });
+  }
+  out.sort((a, b) => b.score - a.score || (a.date < b.date ? -1 : 1));
+  return out;
+}
+
+function chip(text, kind) {
+  return `<span class="chip ${kind}">${text}</span>`;
+}
+
+function verdictChip(g) {
+  const u = g.win.uplift;
+  const p = g.win.p;
+  if (u == null) return chip("データ不足", "gray");
+  if (u >= 0.02 && p != null && p < 0.1) return chip("効いてる", "good");
+  if (u <= -0.02) return chip("むしろ弱い", "bad");
+  return chip("微妙", "gray");
+}
+
+/** 結論サマリー（ヒーローセクション） */
+function summarySection(a, meta) {
+  const items = [];
+
+  // イベント日仮説の一行サマリー
+  const evLines = a.eventGroups
+    .map(
+      (g) =>
+        `<li>${verdictChip(g)} <b>${esc(g.label)}</b> 勝率 ${pct(g.win.meanEvent)}（通常比 <b>${pctPt(g.win.uplift)}</b>, p=${g.win.p == null ? "-" : g.win.p.toFixed(3)}, n=${g.win.nEvent}）` +
+        `${g.recent ? ` — ${esc(g.recent.verdict)}` : ""}</li>`
+    )
+    .join("");
+  items.push(`<div class="card"><h3>イベント日仮説</h3><ul class="plain">${evLines}</ul></div>`);
+
+  // 今後の狙い日
+  const up = upcomingDays(a, meta.today, 14);
+  const upLines = up
+    .slice(0, 6)
+    .map((u) => {
+      const p = toDateParts(u.date);
+      const hits = u.hits
+        .map((h) => (h.significant ? `<b>${esc(h.label)} ${pctPt(h.uplift)}</b>` : `<span class="dim">${esc(h.label)} ${pctPt(h.uplift)}</span>`))
+        .join("・");
+      return `<li><b>${p.m}/${p.d}(${WEEKDAYS[p.weekday]})</b> ${hits}</li>`;
+    })
+    .join("");
+  items.push(
+    `<div class="card"><h3>今後2週間の狙い日（実績ベース）</h3><ul class="plain">${upLines || "<li>該当なし</li>"}</ul><p class="note">太字 = 統計的に裏付けのある仮説（uplift&gt;1pt, p&lt;0.2, n≥5）。灰色は実績の裏付けが弱い。</p></div>`
+  );
+
+  // 末尾ルール
+  const dt = a.suffix.dateTailMatch;
+  const tailCells = [];
+  for (const g of a.suffix.byEvent) {
+    if (g.label === "全日") continue;
+    for (const r of g.table) {
+      if (r.n >= 5 && r.upliftWinVsNormal != null) tailCells.push({ event: g.label, suffix: r.suffix, uplift: r.upliftWinVsNormal, n: r.n });
+    }
+  }
+  tailCells.sort((x, y) => y.uplift - x.uplift);
+  const tailLines = tailCells
+    .slice(0, 3)
+    .map((t) => `<li><b>${esc(t.event)} × 末尾${esc(t.suffix === "zorome" ? "ゾロ目" : t.suffix)}</b>: 勝率 ${pctPt(t.uplift)}（n=${t.n}）</li>`)
+    .join("");
+  items.push(
+    `<div class="card"><h3>末尾の見どころ</h3><ul class="plain">
+<li>日付末尾一致（n日の末尾n）: 差枚Δ <b>${formatSigned(dt.meanDeltaDiff)}</b>（p=${dt.pDiff == null ? "-" : dt.pDiff.toFixed(3)}）・勝率Δ <b>${pctPt(dt.meanDeltaWin)}</b>（p=${dt.pWin == null ? "-" : dt.pWin.toFixed(3)}）</li>
+${tailLines}</ul></div>`
+  );
+
+  // シリーズの見どころ
+  const seriesCells = [];
+  for (const s of a.series) {
+    for (const e of s.byEvent || []) {
+      if (e.win.uplift != null && e.win.nEvent >= 5 && e.win.p != null && e.win.p < 0.2) {
+        seriesCells.push({ series: s.name, event: e.label, uplift: e.win.uplift, p: e.win.p, n: e.win.nEvent });
+      }
+    }
+  }
+  seriesCells.sort((x, y) => Math.abs(y.uplift) - Math.abs(x.uplift));
+  const seriesLines = seriesCells
+    .slice(0, 5)
+    .map((t) => `<li><b>${esc(t.series)} × ${esc(t.event)}</b>: 勝率 ${pctPt(t.uplift)}（p=${t.p.toFixed(3)}, n=${t.n}）</li>`)
+    .join("");
+  items.push(`<div class="card"><h3>機種シリーズの見どころ</h3><ul class="plain">${seriesLines || "<li>有意な組み合わせなし</li>"}</ul></div>`);
+
+  // 直近の入替
+  const ev = [...a.lineup.events].sort((x, y) => (x.date < y.date ? 1 : -1)).slice(0, 5);
+  const evLines2 = ev.map((e) => `<li>${esc(e.date)} ${chip(esc(e.kind), e.kind === "新台" || e.kind === "増台" ? "good" : "gray")} ${esc(e.model)}（${e.from}→${e.to}台）</li>`).join("");
+  items.push(`<div class="card"><h3>直近の入替検知</h3><ul class="plain">${evLines2 || "<li>検知なし</li>"}</ul></div>`);
+
+  return `<section id="summary"><h2>結論サマリー</h2><div class="cards">${items.join("\n")}</div></section>`;
+}
+
+function calendarHeatmap(a) {
+  const byD = new Map(a.byDayOfMonth.map((r) => [r.d, r]));
+  let cells = "";
+  for (let d = 1; d <= 31; d++) {
+    const r = byD.get(d);
+    if (!r) {
+      cells += `<div class="cal-cell empty">${d}</div>`;
+      continue;
+    }
+    const star = r.pWin != null && r.pWin < 0.05 ? "★" : "";
+    cells += `<div class="cal-cell"${heat(r.upliftWin, 0.12)} title="${d}日: 勝率 ${pct(r.winRate)} (uplift ${pctPt(r.upliftWin)}, 差枚 ${formatSigned(r.meanDiff)}, n=${r.n})">
+<span class="cal-d">${d}${star}</span><span class="cal-v">${pctPt(r.upliftWin, 0)}</span><span class="cal-n">n${r.n}</span></div>`;
+  }
+  return `<div class="cal">${cells}</div><p class="note">色 = 勝率の通常日比（赤=強い・青=弱い）、★ = p&lt;0.05。セルにカーソルを当てると詳細。</p>`;
+}
+
+export function renderHtml(analysis, config, meta) {
+  const a = analysis;
+  const sections = [];
+
+  sections.push(summarySection(a, meta));
+
+  sections.push(`<section id="days"><h2>日にち別（1〜31日）</h2>
+${calendarHeatmap(a)}
+<details><summary>数値テーブルを開く</summary>
+${table(
+    ["日", "n", "平均差枚", "差枚中央値", "勝率", "平均G数", "差枚uplift", "勝率uplift", "p(勝率)"],
+    a.byDayOfMonth.map((r) => [
+      td(`<b>${r.d}</b>`),
+      td(r.n),
+      td(formatSigned(r.meanDiff), heat(r.meanDiff, 1500)),
+      td(formatSigned(r.medianDiff)),
+      td(pct(r.winRate), heat((r.winRate ?? 0.5) - 0.5, 0.15)),
+      td(num(r.meanGames)),
+      td(formatSigned(r.upliftDiff), heat(r.upliftDiff, 1500)),
+      td(pctPt(r.upliftWin), heat(r.upliftWin, 0.12)),
+      td(pv(r.pWin)),
+    ])
+  )}</details>
+<h3>曜日別</h3>
+${table(
+    ["曜日", "n", "平均差枚", "勝率", "平均G数", "差枚uplift", "勝率uplift"],
+    a.byWeekday.map((r) => [
+      td(r.weekday),
+      td(r.n),
+      td(formatSigned(r.meanDiff), heat(r.meanDiff, 1000)),
+      td(pct(r.winRate), heat((r.winRate ?? 0.5) - 0.5, 0.15)),
+      td(num(r.meanGames)),
+      td(formatSigned(r.upliftDiff), heat(r.upliftDiff, 1000)),
+      td(pctPt(r.upliftWin), heat(r.upliftWin, 0.1)),
+    ])
+  )}</section>`);
+
+  const evRows = a.eventGroups.map((g) => [
+    td(`<b>${esc(g.label)}</b>`),
+    td(g.win.nEvent),
+    td(formatSigned(g.diff.meanEvent) + " / " + formatSigned(g.diff.meanRest)),
+    td(formatSigned(g.diff.uplift), heat(g.diff.uplift, 1500)),
+    td(pv(g.diff.p)),
+    td(pct(g.win.meanEvent) + " / " + pct(g.win.meanRest)),
+    td(pctPt(g.win.uplift), heat(g.win.uplift, 0.12)),
+    td(pv(g.win.p)),
+    td(formatSigned(g.games.uplift)),
+    td(esc(g.recent ? g.recent.verdict : "-")),
+  ]);
+  sections.push(`<section id="events"><h2>イベント日仮説の検証</h2>
+${table(["仮説", "n", "平均差枚(イベ/通常)", "差枚uplift", "p", "勝率(イベ/通常)", "勝率uplift", "p", "G数uplift", "直近6か月の判定"], evRows)}
+${a.eventGroups
+    .map((g) => {
+      const rows = g.monthly.filter((m) => m.nEvent > 0);
+      if (!rows.length) return "";
+      const bars = rows
+        .map((m) => {
+          const v = m.upliftWin;
+          const h = v == null ? 2 : Math.max(2, Math.min(44, Math.abs(v) * 260));
+          const cls = v == null ? "na" : v >= 0 ? "pos" : "neg";
+          return `<div class="bar ${cls}" style="height:${h}px" title="${m.ym}: 勝率uplift ${pctPt(v)} (n=${m.nEvent})"></div>`;
+        })
+        .join("");
+      return `<details><summary>${esc(g.label)} の月次トレンド（勝率uplift）</summary><div class="spark">${bars}</div></details>`;
+    })
+    .join("\n")}
+<h3>min-repo の「状況」ラベル別</h3>
+${table(
+    ["ラベル", "n", "平均差枚", "勝率", "平均G数"],
+    a.statusLabels.map((r) => [td(esc(r.label)), td(r.n), td(formatSigned(r.meanDiff), heat(r.meanDiff, 1500)), td(pct(r.winRate), heat((r.winRate ?? 0.5) - 0.5, 0.15)), td(num(r.meanGames))])
+  )}</section>`);
+
+  const sx = a.suffix;
+  sections.push(`<section id="suffix"><h2>末尾分析</h2>
+<p>日付末尾一致（n日の末尾n、例: 13日の末尾3）: n=${sx.dateTailMatch.n}日、差枚Δ <b>${formatSigned(sx.dateTailMatch.meanDeltaDiff)}</b>（p=${pv(sx.dateTailMatch.pDiff)}）、勝率Δ <b>${pctPt(sx.dateTailMatch.meanDeltaWin)}</b>（p=${pv(sx.dateTailMatch.pWin)}）</p>
+${sx.byEvent
+    .map(
+      (g) => `<details${g.label === "全日" ? "" : " open"}><summary>${esc(g.label)}（${g.nDays}日）</summary>
+${table(
+        ["末尾", "n", "平均差枚", "勝率", "平均G数", "差枚uplift vs 通常日", "勝率uplift vs 通常日"],
+        g.table.map((r) => [
+          td(`<b>${esc(r.suffix === "zorome" ? "ゾロ目" : r.suffix)}</b>`),
+          td(r.n),
+          td(formatSigned(r.meanDiff), heat(r.meanDiff, 1500)),
+          td(pct(r.winRate), heat((r.winRate ?? 0.5) - 0.5, 0.15)),
+          td(num(r.meanGames)),
+          td(formatSigned(r.upliftDiffVsNormal), heat(r.upliftDiffVsNormal, 1500)),
+          td(pctPt(r.upliftWinVsNormal), heat(r.upliftWinVsNormal, 0.12)),
+        ])
+      )}</details>`
+    )
+    .join("\n")}</section>`);
+
+  sections.push(`<section id="series"><h2>注目機種シリーズ × イベント日</h2>
+${a.series
+    .map((s) => {
+      if (!s.nDays) return `<h3>${esc(s.name)}</h3><p>データ無し</p>`;
+      const rows = s.byEvent.map((e) => [
+        td(esc(e.label)),
+        td(e.win.nEvent),
+        td(formatSigned(e.diff.uplift), heat(e.diff.uplift, 2000)),
+        td(pv(e.diff.p)),
+        td(pct(e.win.meanEvent)),
+        td(pctPt(e.win.uplift), heat(e.win.uplift, 0.15)),
+        td(pv(e.win.p)),
+        td(
+          e.byYear
+            .filter((y) => y.nEvent > 0)
+            .map((y) => `${y.y}: ${pctPt(y.upliftWin)} (n=${y.nEvent})`)
+            .join("<br>")
+        ),
+      ]);
+      return `<h3>${esc(s.name)} <span class="dim">（${s.nDays}日、平均${num(s.avgCount, 1)}台、平常勝率 ${pct(s.winRate)}）</span></h3>
+${table(["イベント", "n", "差枚uplift", "p", "イベ日勝率", "勝率uplift", "p", "年別 勝率uplift"], rows)}`;
+    })
+    .join("\n")}</section>`);
+
+  const hole = a.hole;
+  const holeTable = (label, rows) =>
+    `<h3>${label}</h3>${table(
+      ["直近" + hole.config.window + "日合計", "範囲", "n", "当日勝率", "当日平均差枚"],
+      rows.map((r) => [td(r.bucket), td(esc(r.range)), td(r.n), td(pct(r.winRate), heat((r.winRate ?? 0.5) - 0.5, 0.15)), td(formatSigned(r.meanDiff), heat(r.meanDiff, 1500))]),
+      { sortable: false }
+    )}`;
+  sections.push(`<section id="hole"><h2>凹み台の扱い <span class="dim">（台番が取れているデータのみ、n=${num(hole.nSamples)}）</span></h2>
+${holeTable("イベント日のみ", hole.eventDays)}
+${holeTable("通常日のみ", hole.normalDays)}
+<details><summary>全日</summary>${holeTable("全日", hole.allDays)}</details>
+<p class="note">「大凹みの台がイベント日だけ勝率が跳ねる」なら凹み台救済の傾向あり。差がなければ末尾や機種で選ぶ方がよい。</p></section>`);
+
+  const lineupEvents = [...a.lineup.events].sort((x, y) => (x.date < y.date ? 1 : -1));
+  sections.push(`<section id="lineup"><h2>新台・増台・撤去の検知</h2>
+${table(
+    ["日付", "種別", "機種", "台数", "導入後7日 勝率/差枚", "8〜37日 勝率/差枚"],
+    lineupEvents.slice(0, 80).map((e) => {
+      const intro = a.lineup.intro.find((i) => i.date === e.date && i.model === e.model);
+      return [
+        td(esc(e.date)),
+        td(`<b>${esc(e.kind)}</b>`),
+        td(esc(e.model)),
+        td(`${e.from}→${e.to}`),
+        td(intro ? `${pct(intro.firstWeek.winRate)} / ${formatSigned(intro.firstWeek.meanDiff)}` : "-"),
+        td(intro ? `${pct(intro.later.winRate)} / ${formatSigned(intro.later.meanDiff)}` : "-"),
+      ];
+    })
+  )}
+<p class="note">設置構成の変化から自動検出。データ欠損日を跨ぐと実際の入替日と1〜2日ずれることがある。直近80件のみ表示（全件は data/analysis.json）。</p></section>`);
+
+  const ann = a.anniversaries;
+  sections.push(`<section id="anniv"><h2>キャラ誕生日・記念日</h2>
+<h3>設定した仮説（config.mjs の anniversaries）</h3>
+${table(
+    ["仮説", "月日", "n", "平均差枚", "シリーズ平常時", "勝率"],
+    ann.explicit.map((r) => [td(esc(r.label)), td(r.monthDay), td(r.n), td(formatSigned(r.meanDiff), heat(r.meanDiff - (r.baselineDiff ?? 0), 2000)), td(formatSigned(r.baselineDiff)), td(pct(r.winRate))])
+  )}
+<h3>自動スキャン: シリーズ別に突出した（月,日）トップ25</h3>
+${table(
+    ["シリーズ", "月日", "n", "平均差枚", "uplift", "勝率"],
+    ann.autoScan.map((r) => [td(esc(r.series)), td(esc(r.monthDay)), td(r.n), td(formatSigned(r.meanDiff)), td(formatSigned(r.uplift), heat(r.uplift, 3000)), td(pct(r.winRate))])
+  )}
+<p class="note">自動スキャンは「3のつく日」等と重なるものも混ざる。n が小さいものは話半分に。</p></section>`);
+
+  sections.push(`<section id="notes"><h2>読み方・注意</h2>
+<ul>
+<li>差枚は万枚事故などの外れ値に弱い。<b>勝率の uplift と p値</b>を主に、差枚・中央値を従に見る。</li>
+<li>p値は並べ替え検定（2000回）。仮説を同時にたくさん見ているので、p&lt;0.05 でも 20 回に 1 回は偶然出る。uplift の大きさ・月次の安定感・n をセットで判断。</li>
+<li>データ出典: min-repo.com（独自調査値・推定）。<b>私的な分析用途のみ。このレポートや元データを転載・公開しないこと。</b></li>
+<li>データ範囲: ${esc(a.coverage.from)} 〜 ${esc(a.coverage.to)}（${a.coverage.nDays}日、台番付き ${num(a.coverage.nUnits)}件）</li>
+</ul></section>`);
+
+  const nav = [
+    ["summary", "結論"],
+    ["days", "日にち"],
+    ["events", "イベント日"],
+    ["suffix", "末尾"],
+    ["series", "機種"],
+    ["hole", "凹み"],
+    ["lineup", "入替"],
+    ["anniv", "記念日"],
+    ["notes", "注意"],
+  ]
+    .map(([id, label]) => `<a href="#${id}">${label}</a>`)
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(config.storeName)} 分析</title>
+<style>
+:root{--accent:#c62828;--bg:#f6f7f9;--card:#fff;--line:#e3e6ea}
+*{box-sizing:border-box}
+body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;color:#1c1e21;background:var(--bg)}
+header{background:#23272f;color:#fff;padding:14px 16px 10px}
+header h1{font-size:1.05rem;margin:0 0 2px}
+header .meta{font-size:.72rem;color:#aab}
+nav{position:sticky;top:0;z-index:10;background:#23272f;padding:8px 12px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+nav a{color:#dde;text-decoration:none;font-size:.8rem;padding:5px 10px;border-radius:999px;background:#3a3f4a;white-space:nowrap}
+nav a:active{background:var(--accent)}
+main{max-width:1100px;margin:0 auto;padding:8px 12px 40px}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:14px 0;scroll-margin-top:56px}
+h2{font-size:1.05rem;margin:.2em 0 .6em;border-left:4px solid var(--accent);padding-left:8px}
+h3{font-size:.92rem;margin:1em 0 .3em}
+.dim{color:#888;font-weight:normal;font-size:.8em}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fcfcfd}
+.card h3{margin:.1em 0 .4em}
+ul.plain{list-style:none;margin:.2em 0;padding:0}
+ul.plain li{padding:3px 0;font-size:.84rem;border-bottom:1px dashed #eee}
+.chip{display:inline-block;font-size:.68rem;padding:2px 8px;border-radius:999px;margin-right:4px;vertical-align:1px}
+.chip.good{background:#e8f5e9;color:#1b5e20}.chip.bad{background:#ffebee;color:#b71c1c}.chip.gray{background:#eceff1;color:#546e7a}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;font-size:.8rem;margin:.4em 0;background:#fff;min-width:100%}
+th,td{border:1px solid var(--line);padding:3px 8px;text-align:right;white-space:nowrap}
+th{background:#f0f2f5;position:sticky;top:0}
+table.sortable th{cursor:pointer}
+table.sortable th:hover{background:#e3e6ea}
+td:first-child,th:first-child{text-align:left}
+.note{color:#667;font-size:.76rem}
+.cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:4px;margin:6px 0}
+.cal-cell{border:1px solid var(--line);border-radius:8px;padding:4px;display:flex;flex-direction:column;align-items:center;min-height:52px}
+.cal-cell.empty{opacity:.3}
+.cal-d{font-weight:700;font-size:.85rem}.cal-v{font-size:.68rem}.cal-n{font-size:.6rem;color:#889}
+.spark{display:flex;align-items:flex-end;gap:2px;height:50px;margin:4px 0 12px}
+.bar{width:9px;min-height:2px;border-radius:2px 2px 0 0}.bar.pos{background:#e53935}.bar.neg{background:#1e88e5}.bar.na{background:#ccc}
+details{margin:.4em 0}summary{cursor:pointer;font-size:.85rem;color:#345}
+footer{margin:1em 0 3em;color:#99a;font-size:.72rem;text-align:center}
+</style></head><body>
+<header><h1>${esc(config.storeName)} 設定狙い分析</h1>
+<div class="meta">生成 ${esc(meta.generatedAt)} ／ データ ${esc(a.coverage.from)}〜${esc(a.coverage.to)}（${a.coverage.nDays}日） ／ 出典 min-repo.com（私的利用のみ）</div></header>
+<nav>${nav}</nav>
+<main>
+${sections.join("\n")}
+<footer>tools/minrepo による自動生成。仮説の追加は config.mjs を編集 → <code>node tools/minrepo/run.mjs analyze &amp;&amp; node tools/minrepo/run.mjs report</code></footer>
+</main>
+<script>
+// テーブルのヘッダクリックでソート（数値優先・依存なし）
+document.querySelectorAll("table.sortable").forEach(function(t){
+  var ths=t.querySelectorAll("thead th");
+  ths.forEach(function(th,i){
+    th.addEventListener("click",function(){
+      var tb=t.querySelector("tbody");
+      var rows=Array.prototype.slice.call(tb.querySelectorAll("tr"));
+      var dir=th.dataset.dir==="desc"?1:-1;
+      ths.forEach(function(h){delete h.dataset.dir});
+      th.dataset.dir=dir===1?"asc":"desc";
+      var val=function(tr){
+        var c=tr.children[i];if(!c)return NaN;
+        var s=c.textContent.replace(/[,%]/g,"").replace(/pt$/,"").trim();
+        var m=s.match(/^[+\\-]?\\d+(\\.\\d+)?/);
+        return m?parseFloat(m[0]):NaN;
+      };
+      rows.sort(function(x,y){
+        var a=val(x),b=val(y);
+        if(isNaN(a)&&isNaN(b))return x.children[i].textContent.localeCompare(y.children[i].textContent)*dir;
+        if(isNaN(a))return 1;if(isNaN(b))return -1;
+        return (a-b)*dir;
+      });
+      rows.forEach(function(r){tb.appendChild(r)});
+    });
+  });
+});
+</script>
+</body></html>`;
+}
+
+/** 上位の発見を Markdown ダイジェストにする */
+export function renderMarkdown(analysis, config, generatedAt) {
+  const a = analysis;
+  const lines = [];
+  lines.push(`# ${config.storeName} 分析ダイジェスト`);
+  lines.push(`生成: ${generatedAt} ／ 範囲: ${a.coverage.from} 〜 ${a.coverage.to}（${a.coverage.nDays}日）`);
+  lines.push("");
+  lines.push("## イベント日仮説");
+  lines.push("| 仮説 | n | 勝率(イベ/通常) | 勝率uplift | p | 差枚uplift | 直近6か月 |");
+  lines.push("|---|---|---|---|---|---|---|");
+  for (const g of a.eventGroups) {
+    lines.push(
+      `| ${g.label} | ${g.win.nEvent} | ${pct(g.win.meanEvent)} / ${pct(g.win.meanRest)} | ${pctPt(g.win.uplift)} | ${g.win.p == null ? "-" : g.win.p.toFixed(3)} | ${formatSigned(g.diff.uplift)} | ${g.recent ? g.recent.verdict : "-"} |`
+    );
+  }
+  lines.push("");
+  const strongDays = a.byDayOfMonth.filter((r) => r.n >= 5 && r.upliftWin != null).sort((x, y) => y.upliftWin - x.upliftWin);
+  lines.push("## 勝率が高い日トップ5 / ワースト3");
+  for (const r of strongDays.slice(0, 5)) lines.push(`- ${r.d}日: 勝率 ${pct(r.winRate)}（uplift ${pctPt(r.upliftWin)}, n=${r.n}, p=${r.pWin == null ? "-" : r.pWin.toFixed(3)}）`);
+  for (const r of strongDays.slice(-3)) lines.push(`- ${r.d}日: 勝率 ${pct(r.winRate)}（uplift ${pctPt(r.upliftWin)}, n=${r.n}）`);
+  lines.push("");
+  lines.push("## 日付末尾一致");
+  const dt = a.suffix.dateTailMatch;
+  lines.push(`- n=${dt.n}日, 差枚Δ ${formatSigned(dt.meanDeltaDiff)} (p=${dt.pDiff == null ? "-" : dt.pDiff.toFixed(3)}), 勝率Δ ${pctPt(dt.meanDeltaWin)} (p=${dt.pWin == null ? "-" : dt.pWin.toFixed(3)})`);
+  lines.push("");
+  lines.push("## シリーズ×イベントの見どころ（勝率uplift ±3pt 以上 or p<0.1）");
+  for (const s of a.series) {
+    if (!s.nDays) continue;
+    for (const e of s.byEvent || []) {
+      const u = e.win.uplift;
+      if (u == null) continue;
+      if (Math.abs(u) >= 0.03 || (e.win.p != null && e.win.p < 0.1)) {
+        lines.push(`- ${s.name} × ${e.label}: 勝率uplift ${pctPt(u)} (n=${e.win.nEvent}, p=${e.win.p == null ? "-" : e.win.p.toFixed(3)}), 差枚uplift ${formatSigned(e.diff.uplift)}`);
+      }
+    }
+  }
+  lines.push("");
+  lines.push("## 直近の入替検知（10件）");
+  const ev = [...a.lineup.events].sort((x, y) => (x.date < y.date ? 1 : -1)).slice(0, 10);
+  for (const e of ev) lines.push(`- ${e.date} ${e.kind}: ${e.model}（${e.from}→${e.to}台）`);
+  lines.push("");
+  lines.push("詳細は report.html を参照。");
+  return lines.join("\n") + "\n";
+}
