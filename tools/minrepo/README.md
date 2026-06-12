@@ -18,15 +18,18 @@
 ## 使い方
 
 ```sh
-# 初回: 過去 18 か月ぶんを取得（config.mjs の backfillMonths で変更可）
+# 初回: 過去 6 か月ぶんを取得（config.mjs の backfillMonths で変更可）
 node tools/minrepo/run.mjs --backfill
 
 # 量が多いので分割するなら（再実行すると続きから取得する）
-node tools/minrepo/run.mjs --backfill --limit 100
+node tools/minrepo/run.mjs --backfill --limit 60
 
 # 2回目以降（毎日 or 数日おき）: 新しい日だけ取得して再分析
 node tools/minrepo/run.mjs
 ```
+
+レポート（`data/report.html`）は**単一ファイルのダッシュボード**（スマホ対応・固定ナビ・結論サマリー・
+「今後2週間の狙い日」・表のヘッダクリックでソート）。LINE や AirDrop で自分のスマホに送ればそのまま開ける。
 
 結果は `tools/minrepo/data/` に出る:
 

@@ -199,9 +199,9 @@ export function analyzeStep(config, log = console.log) {
 export function reportStep(config, log = console.log) {
   const analysis = readJson(join(DATA_DIR, "analysis.json"), null);
   if (!analysis) throw new Error("analysis.json が無い。先に analyze を実行すること。");
-  const generatedAt = new Date().toLocaleString("ja-JP");
-  writeFileSync(join(DATA_DIR, "report.html"), renderHtml(analysis, config, generatedAt));
-  writeFileSync(join(DATA_DIR, "report.md"), renderMarkdown(analysis, config, generatedAt));
+  const meta = { generatedAt: new Date().toLocaleString("ja-JP"), today: todayStr() };
+  writeFileSync(join(DATA_DIR, "report.html"), renderHtml(analysis, config, meta));
+  writeFileSync(join(DATA_DIR, "report.md"), renderMarkdown(analysis, config, meta.generatedAt));
   log(`レポート生成 → data/report.html, data/report.md`);
 }
 

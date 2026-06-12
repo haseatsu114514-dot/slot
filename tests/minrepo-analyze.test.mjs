@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { buildDataset } from "../tools/minrepo/lib/dataset.mjs";
 import { analyze, matchesEvent, buildSeriesDays } from "../tools/minrepo/lib/analyze.mjs";
+import { renderHtml, renderMarkdown, upcomingDays } from "../tools/minrepo/lib/report.mjs";
 import { mulberry32, toDateParts, dayContainsDigit, nthWeekdayOfMonth } from "../tools/minrepo/lib/util.mjs";
 
 const CONFIG = {
@@ -190,5 +191,20 @@ assert.ok(Math.abs(seriesDays.get("北斗")[0].count - 30) < 1);
 // 8) カバレッジ
 assert.equal(analysis.coverage.nDays, 547);
 assert.equal(analysis.coverage.nMasked, 0);
+
+// 9) レポート描画と「今後の狙い日」
+const html = renderHtml(analysis, { ...CONFIG, storeName: "テスト店" }, { generatedAt: "テスト生成", today: "2025-06-14" });
+assert.ok(html.includes("結論サマリー"));
+assert.ok(html.includes("今後2週間の狙い日"));
+assert.ok(html.includes("新台・増台・撤去の検知"));
+assert.ok(html.includes("table.sortable"), "ソートJSが入っている");
+assert.ok(html.trimEnd().endsWith("</html>"));
+const up = upcomingDays(analysis, "2025-06-14", 14);
+assert.ok(up.length > 0, "狙い日が出る");
+const day23 = up.find((u) => u.date === "2025-06-23");
+assert.ok(day23 && day23.hits.some((h) => h.label === "3のつく日" && h.significant), `6/23 が3のつく日として推される: ${JSON.stringify(up[0])}`);
+assert.equal(up[0].date, "2025-06-23", "仕込みでは3のつく日が最有力");
+const md = renderMarkdown(analysis, { storeName: "テスト店" }, "テスト生成");
+assert.ok(md.includes("分析ダイジェスト"));
 
 console.log("minrepo-analyze: all tests passed");

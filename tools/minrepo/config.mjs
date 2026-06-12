@@ -13,8 +13,8 @@ export const CONFIG = {
   jitterMs: 800,
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 
-  // バックフィル範囲（か月）。古い記事はレイアウトが違うことがあり、その場合は自動でスキップされる
-  backfillMonths: 18,
+  // バックフィル範囲（か月）。まず半年。増やしたくなったら数字を上げて --backfill し直せば差分だけ取得する
+  backfillMonths: 6,
 
   // 機種別詳細（?kishu=）の取得対象。
   //   mode: "watchlist" = 下の seriesWatchlist に該当する機種のみ / "all" = 全機種 / "none" = 取得しない
