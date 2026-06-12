@@ -911,6 +911,30 @@ export function buildEntriesMap(seedEntries = SEED_MONTHLY_ENTRIES, extraEntries
   return map;
 }
 
+// ============ 過去実績のシート移行サポート ============
+// 焼き込みの過去実績 (SEED_MONTHLY_ENTRIES 由来の avg/days) をシートの
+// 「実績入力」へ行として移行したとき、メモにこの目印を入れる。
+// この目印を含む行がエントリに存在する場合、アプリは焼き込みの avg/days を
+// 使わず、エントリ全量から実績を再構成する (二重計上の防止)。
+export const SEED_MIGRATION_MARKER = "[過去実績移行]";
+
+export function entriesIncludeMigratedSeed(entries = []) {
+  return entries.some((entry) => String(entry?.memo || "").includes(SEED_MIGRATION_MARKER));
+}
+
+// live の実績 (avg/days) をクリアし、キャリブレーション値
+// (seedScore / seedAvg / seedDays / sendan / tags) だけ残したレコード集合を返す。
+// この後 applyEntriesToRecords に全エントリを渡すと実績が再構成される。
+export function resetLiveHistory(records) {
+  return Object.fromEntries(
+    Object.entries(records).map(([name, record]) => {
+      const next = { ...record, avg: null, days: 0 };
+      next.score = computeLiveScore(next);
+      return [name, next];
+    })
+  );
+}
+
 // SEED_MONTHLY_ENTRIES は日付情報を持たないので、九星/曜日/日付別の集計に取り込めない。
 // 各干支について「参照日より前の最近 N 回の出現日」を割り当て、合成エントリとして返す。
 // excludeDates に既に実エントリのある (kanshi, dateKey) ペアを渡すと重複を避ける。

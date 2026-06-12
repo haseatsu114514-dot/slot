@@ -39,6 +39,9 @@ import {
   getKyuseiPerformanceContext,
   aggregateByRatingTier,
   buildPastSeedEntries,
+  entriesIncludeMigratedSeed,
+  resetLiveHistory,
+  SEED_MIGRATION_MARKER,
   SEED_MONTHLY_ENTRIES
 } from "../kanshi-data.js";
 
@@ -480,6 +483,44 @@ suite("過去サンプルの合成", () => {
     const synthetic = buildPastSeedEntries(SEED_MONTHLY_ENTRIES, refKey, undefined, exclude);
     const nezu = synthetic.filter((e) => e.kanshi === "壬子");
     assert.ok(nezu.every((e) => e.targetDate !== "2026-04-08"));
+  });
+});
+
+suite("過去実績のシート移行", () => {
+  test("entriesIncludeMigratedSeed はメモの目印で検知する", () => {
+    assert.equal(entriesIncludeMigratedSeed([]), false);
+    assert.equal(entriesIncludeMigratedSeed([{ memo: "ただのメモ" }]), false);
+    assert.equal(entriesIncludeMigratedSeed([{ memo: `${SEED_MIGRATION_MARKER} 日付は推定` }]), true);
+  });
+
+  test("resetLiveHistory + 全エントリ適用で焼き込みと同じ実績 (days/avg) に再構成される", () => {
+    const base = buildBaseRecords();
+    const seedEntries = [];
+    for (const [kanshi, values] of Object.entries(SEED_MONTHLY_ENTRIES)) {
+      for (const value of values) {
+        seedEntries.push({ kanshi, profit: value, targetDate: "2026-01-01", memo: SEED_MIGRATION_MARKER });
+      }
+    }
+    const rebuilt = applyEntriesToRecords(resetLiveHistory(base), seedEntries);
+    for (const [kanshi, record] of Object.entries(base)) {
+      assert.equal(rebuilt[kanshi].days, record.days, `${kanshi} days`);
+      // applyEntriesToRecords は逐次的に丸めるため ±2 円までの誤差は許容
+      const rebuiltAvg = rebuilt[kanshi].avg;
+      if (record.avg === null) assert.equal(rebuiltAvg, null, `${kanshi} avg null`);
+      else assert.ok(Math.abs(rebuiltAvg - record.avg) <= 2, `${kanshi} avg: ${rebuiltAvg} vs ${record.avg}`);
+    }
+  });
+
+  test("resetLiveHistory はキャリブレーション値 (seedScore/sendan) を保持する", () => {
+    const base = buildBaseRecords();
+    const reset = resetLiveHistory(base);
+    for (const [kanshi, record] of Object.entries(base)) {
+      assert.equal(reset[kanshi].seedScore, record.seedScore, kanshi);
+      assert.equal(reset[kanshi].sendan, record.sendan, kanshi);
+      assert.equal(reset[kanshi].seedAvg, record.seedAvg, kanshi);
+      assert.equal(reset[kanshi].days, 0, kanshi);
+      assert.equal(reset[kanshi].avg, null, kanshi);
+    }
   });
 });
 

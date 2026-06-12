@@ -24,9 +24,11 @@ import {
   aggregateByElement,
   aggregateByRatingTier,
   buildPastSeedEntries,
+  entriesIncludeMigratedSeed,
+  resetLiveHistory,
   SEED_MONTHLY_ENTRIES,
   KYUSEI_NAMES
-} from "./kanshi-data.js?v=20260612a";
+} from "./kanshi-data.js?v=20260612b";
 
 const USER_CONFIG = window.SLOT_APP_CONFIG || {};
 const CONFIG = resolveConfig(USER_CONFIG);
@@ -1348,7 +1350,13 @@ function getSeedRecords() {
 
 function getComputedRecords() {
   const { entries } = getDedupedAggregateEntries();
-  return applyEntriesToRecords(getSeedRecords(), entries);
+  // シートに「過去実績移行」行があるときは、焼き込みの avg/days は使わず
+  // エントリ全量 (移行分 + 通常入力分) から実績を再構成する (二重計上の防止)。
+  // シート未同期 (移行行が見えない) ときは従来どおり焼き込み実績にフォールバック。
+  const base = entriesIncludeMigratedSeed(entries)
+    ? resetLiveHistory(getSeedRecords())
+    : getSeedRecords();
+  return applyEntriesToRecords(base, entries);
 }
 
 function getAllEntries() {
@@ -1791,17 +1799,18 @@ function getDedupedAggregateEntries() {
 }
 
 function getAggregateEntriesMap() {
-  // 現在の Apps Script は「実績入力」の追加分だけを返していて、
-  // 元シート由来の履歴までは remoteEntries に含めていない。
-  // そのため、集計は常にベース履歴 + 日別合計に丸めた追加入力の合算で扱う。
+  // 過去実績がシートへ移行済みならエントリ全量がそのまま全履歴。
+  // 未移行なら焼き込みのベース履歴 + 追加入力の合算で扱う。
   const { entries } = getDedupedAggregateEntries();
-  return buildEntriesMap(SEED_MONTHLY_ENTRIES, entries);
+  return buildEntriesMap(entriesIncludeMigratedSeed(entries) ? {} : SEED_MONTHLY_ENTRIES, entries);
 }
 
 // 九星/曜日/日付別の集計用に、SEED_MONTHLY_ENTRIES の各値へ
 // 「最近の過去出現日」を割り当てた合成エントリを足す。
 // 既に実エントリがある (kanshi, dateKey) は除外して二重計上を防ぐ。
 function mergeWithPastSeedEntries(realEntries = []) {
+  // 移行済みなら realEntries に過去実績 (日付つき) が既に含まれている。
+  if (entriesIncludeMigratedSeed(realEntries)) return [...realEntries];
   const referenceDateKey = getTodayDateKey();
   const exclude = new Set();
   for (const entry of realEntries) {
@@ -2049,17 +2058,18 @@ function aggregateEntriesByDayOfMonth(entries = []) {
 
 function computeLifetimeStats() {
   const profits = [];
-  // 元シートの過去履歴 (SEED_MONTHLY_ENTRIES) は日付を持たないが金額は記録されている。
-  // 全期間サマリーでは日数・合計・勝率に算入する。
-  for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
-    if (!Array.isArray(values)) continue;
-    for (const value of values) {
-      const profit = Number(value);
-      if (Number.isFinite(profit)) profits.push(profit);
+  const { entries } = getDedupedAggregateEntries();
+  // 元シートの過去履歴は、シートへ移行済みなら entries に含まれている。
+  // 未移行のときだけ焼き込み (SEED_MONTHLY_ENTRIES) を算入する。
+  if (!entriesIncludeMigratedSeed(entries)) {
+    for (const values of Object.values(SEED_MONTHLY_ENTRIES)) {
+      if (!Array.isArray(values)) continue;
+      for (const value of values) {
+        const profit = Number(value);
+        if (Number.isFinite(profit)) profits.push(profit);
+      }
     }
   }
-  // アプリ経由で追加された remote + local エントリ（重複排除済み）。
-  const { entries } = getDedupedAggregateEntries();
   for (const entry of entries) {
     const profit = Number(entry?.profit);
     if (Number.isFinite(profit)) profits.push(profit);
