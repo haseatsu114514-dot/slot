@@ -25,12 +25,13 @@ const CONFIG = {
 
 // ---- 合成データ生成 ----
 // 仕込み:
-//  1. 3のつく日: 全体勝率 +15pt・差枚ブースト（全期間）
+//  1. 3のつく日: 全体勝率 +15pt・差枚ブースト（全期間）+ 稼働（平均G数）+400G
 //  2. 4のつく日: 前半6か月だけブースト → 「やめた可能性」の判定が出るはず
 //  3. 7のつく日: 北斗だけ 2024 年のみブースト
-//  4. イベント日(3のつく日)は日付末尾一致の末尾をブースト
+//  4. イベント日(3のつく日)は日付末尾一致の末尾をブースト（差枚 +2000・勝率・稼働 +300G）
 //  5. カバネリ 2025-03-10 に 4台→6台（増台）、2025-05-01 に新機種登場
 //  6. 台番901 は 2025-06-06〜12 に大負け→ 2025-06-13 に大勝ち（大凹み→救済）
+// ※ 仕込みはすべて決定的な加算にする（rng の消費順を変えると既存の p値検証が壊れる）
 const rng = mulberry32(123);
 const noise = (scale) => (rng() - 0.5) * 2 * scale;
 
@@ -85,7 +86,7 @@ for (const date of dateRange("2024-01-01", "2025-06-30")) {
     suffixes.push({
       suffix: String(s),
       avgDiff: Math.round(-300 + (match ? 2000 : 0) + noise(200)),
-      avgGames: 2500,
+      avgGames: 2500 + (match ? 300 : 0),
       win: match ? 20 : 12,
       total: 32,
       payout: null,
@@ -111,7 +112,7 @@ for (const date of dateRange("2024-01-01", "2025-06-30")) {
     report: {
       status: is3 ? "旧イベント日（3のつく日）" : "通常営業",
       oldEventDays: "3のつく日、第1土曜日",
-      avgGames: 2500,
+      avgGames: 2500 + (is3 ? 400 : 0),
       win: totalWin,
       total: totalCount,
       models,
@@ -192,10 +193,33 @@ assert.ok(Math.abs(seriesDays.get("北斗")[0].count - 30) < 1);
 assert.equal(analysis.coverage.nDays, 547);
 assert.equal(analysis.coverage.nMasked, 0);
 
-// 9) レポート描画と「今後の狙い日」
+// 9) G数（稼働）が差枚と並ぶ観察対象になっている
+assert.equal(analysis.params.iterations, 400, "検定の反復数が記録される");
+assert.equal(analysis.params.seed, 7);
+assert.ok(analysis.coverage.meanGames > 2540 && analysis.coverage.meanGames < 2620, `全期間平均G数: ${analysis.coverage.meanGames}`);
+assert.ok(g3.games.uplift > 300, `3のつく日の稼働uplift: ${g3.games.uplift}`);
+assert.ok(g3.games.p != null && g3.games.p < 0.05, `3のつく日の稼働は有意: p=${g3.games.p}`);
+const day3 = analysis.byDayOfMonth.find((r) => r.d === 3);
+assert.ok(day3.upliftGames > 250, `3日のG数uplift: ${day3.upliftGames}`);
+assert.ok(analysis.byWeekday.every((r) => "upliftGames" in r), "曜日別にもG数uplift がある");
+const sx3 = ev3.table.find((r) => r.suffix === "3");
+assert.ok(sx3.upliftGamesVsNormal > 100, `3のつく日×末尾3 のG数uplift: ${sx3.upliftGamesVsNormal}`);
+assert.ok(dt.meanDeltaGames > 30, `日付末尾一致の稼働Δ: ${dt.meanDeltaGames}`);
+assert.ok(dt.pGames != null && dt.pGames < 0.05, `日付末尾一致の稼働Δは有意: ${dt.pGames}`);
+assert.equal(bigHoleEvent.meanGames, 1500, "凹みバケツに当日平均G数が出る");
+assert.ok(hokuto.meanGames > 2300 && hokuto.meanGames < 2700, `北斗の平均G数: ${hokuto.meanGames}`);
+assert.ok(h7.games && h7.games.nEvent > 0, "シリーズ×イベントにG数の群間比較がある");
+assert.ok(intro.firstWeek.meanGames != null, "導入初週の平均G数が出る");
+
+// 10) レポート描画と「今後の狙い日」
 const html = renderHtml(analysis, { ...CONFIG, storeName: "テスト店" }, { generatedAt: "テスト生成", today: "2025-06-14" });
 assert.ok(html.includes("結論サマリー"));
 assert.ok(html.includes("今後2週間の狙い日"));
+assert.ok(html.includes("6/14〜"), "狙い日の基準日がタイトルに出る");
+assert.ok(html.includes("稼働（G数）の見どころ"), "稼働カードが出る");
+assert.ok(html.includes("稼働（G数）版ヒートマップ"), "G数ヒートマップが出る");
+assert.ok(html.includes("G数uplift"), "テーブルにG数uplift列がある");
+assert.ok(html.includes("並べ替え検定（400回）"), "反復数が動的に表示される");
 assert.ok(html.includes("新台・増台・撤去の検知"));
 assert.ok(html.includes("table.sortable"), "ソートJSが入っている");
 assert.ok(html.trimEnd().endsWith("</html>"));
@@ -204,7 +228,10 @@ assert.ok(up.length > 0, "狙い日が出る");
 const day23 = up.find((u) => u.date === "2025-06-23");
 assert.ok(day23 && day23.hits.some((h) => h.label === "3のつく日" && h.significant), `6/23 が3のつく日として推される: ${JSON.stringify(up[0])}`);
 assert.equal(up[0].date, "2025-06-23", "仕込みでは3のつく日が最有力");
+assert.ok(day23.hits[0].gamesUplift > 300, `狙い日に稼働upliftが付く: ${JSON.stringify(day23.hits[0])}`);
 const md = renderMarkdown(analysis, { storeName: "テスト店" }, "テスト生成");
 assert.ok(md.includes("分析ダイジェスト"));
+assert.ok(md.includes("稼働（G数）が伸びる日トップ5"), "ダイジェストにも稼働セクション");
+assert.ok(md.includes("G数uplift"), "ダイジェストのイベント表にG数uplift列");
 
 console.log("minrepo-analyze: all tests passed");

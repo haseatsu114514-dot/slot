@@ -28,8 +28,9 @@ function readJson(path, fallback) {
 }
 
 function todayStr() {
-  const t = new Date();
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  // JST 基準（min-repo は日本のホールデータ。実行環境のタイムゾーンに依存させない）
+  const t = new Date(Date.now() + 9 * 3600 * 1000);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
 }
 
 function monthsAgo(n) {
@@ -196,13 +197,18 @@ export function analyzeStep(config, log = console.log) {
   return analysis;
 }
 
-export function reportStep(config, log = console.log) {
+/** opts.date: 狙い日計算の基準日（YYYY-MM-DD）。省略時は今日(JST)。 */
+export function reportStep(config, opts = {}, log = console.log) {
   const analysis = readJson(join(DATA_DIR, "analysis.json"), null);
   if (!analysis) throw new Error("analysis.json が無い。先に analyze を実行すること。");
-  const meta = { generatedAt: new Date().toLocaleString("ja-JP"), today: todayStr() };
+  if (opts.date && !/^\d{4}-\d{2}-\d{2}$/.test(opts.date)) throw new Error("--date は YYYY-MM-DD 形式で指定すること。");
+  const meta = {
+    generatedAt: new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }),
+    today: opts.date || todayStr(),
+  };
   writeFileSync(join(DATA_DIR, "report.html"), renderHtml(analysis, config, meta));
   writeFileSync(join(DATA_DIR, "report.md"), renderMarkdown(analysis, config, meta.generatedAt));
-  log(`レポート生成 → data/report.html, data/report.md`);
+  log(`レポート生成（狙い日基準 ${meta.today}）→ data/report.html, data/report.md`);
 }
 
 export { todayStr };
