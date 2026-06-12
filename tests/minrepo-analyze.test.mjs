@@ -232,7 +232,7 @@ assert.ok(html.includes("今後2週間の狙い日"));
 assert.ok(html.includes("6/14〜"), "狙い日の基準日がタイトルに出る");
 assert.ok(html.includes("稼働（G数）の見どころ"), "稼働カードが出る");
 assert.ok(html.includes("稼働（G数）版ヒートマップ"), "G数ヒートマップが出る");
-assert.ok(html.includes("G数uplift"), "テーブルにG数uplift列がある");
+assert.ok(html.includes("G数Δ"), "テーブルにG数Δ列がある");
 assert.ok(html.includes("並べ替え検定（400回）"), "反復数が動的に表示される");
 assert.ok(html.includes("機種別の強さランキング"), "全機種ランキングのセクションがある");
 assert.ok(html.includes("いま強い台"), "強い台カードが出る");
@@ -252,7 +252,31 @@ assert.ok(day23.hits[0].gamesUplift > 300, `狙い日に稼働upliftが付く: $
 const md = renderMarkdown(analysis, { storeName: "テスト店" }, "テスト生成");
 assert.ok(md.includes("分析ダイジェスト"));
 assert.ok(md.includes("稼働（G数）が伸びる日トップ5"), "ダイジェストにも稼働セクション");
-assert.ok(md.includes("G数uplift"), "ダイジェストのイベント表にG数uplift列");
+assert.ok(md.includes("G数Δ"), "ダイジェストのイベント表にG数Δ列");
 assert.ok(md.includes("機種別ランキング"), "ダイジェストにも機種ランキング");
+
+// 11) 分析窓（analysisMonths）と設置なしシリーズの自動非表示
+assert.ok(html.includes("詳細（勝率・p値"), "勝率・p値は折りたたみの詳細へ");
+const winAnalysis = analyze(
+  dataset,
+  { ...CONFIG, analysisMonths: 6, seriesWatchlist: [...CONFIG.seriesWatchlist, { name: "ハーデス", pattern: "ハーデス" }] },
+  { iterations: 200, seed: 7 }
+);
+assert.equal(winAnalysis.coverage.windowMonths, 6);
+assert.equal(winAnalysis.coverage.totalDaysAvailable, 547, "収集済み全日数は別途記録");
+assert.equal(winAnalysis.coverage.windowFrom, "2024-12-31");
+assert.equal(winAnalysis.coverage.nDays, 182, "直近6か月だけが分析対象");
+assert.ok(winAnalysis.coverage.from >= "2024-12-31");
+assert.equal(winAnalysis.params.recentMonths, 3, "窓6か月なら直近判定は3か月で切る");
+assert.ok(winAnalysis.lineup.events.every((e) => e.date >= "2024-12-31"), "入替検知も窓内のみ");
+assert.equal(winAnalysis.anniversaries.explicit[0].n, 1, "記念日(12/20)は窓の外でも全期間で評価される");
+const hadesRow = winAnalysis.series.find((s) => s.name === "ハーデス");
+assert.ok(hadesRow && hadesRow.nDays === 0 && hadesRow.active === false, "設置なしシリーズは active=false");
+const hokutoWin = winAnalysis.series.find((s) => s.name === "北斗");
+assert.ok(hokutoWin.active === true && hokutoWin.lastSeen === "2025-06-30", "設置中シリーズは active");
+const winHtml = renderHtml(winAnalysis, { ...CONFIG, storeName: "テスト店" }, { generatedAt: "t", today: "2025-06-14" });
+assert.ok(!winHtml.includes("<h3>ハーデス"), "設置なしシリーズはレポートに出ない");
+assert.ok(winHtml.includes("設置が確認できないため非表示"), "非表示の注記が出る");
+assert.ok(winHtml.includes("直近6か月窓"), "窓の説明が出る");
 
 console.log("minrepo-analyze: all tests passed");

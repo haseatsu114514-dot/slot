@@ -4,7 +4,7 @@
 // 差枚は外れ値（万枚事故等）に引っ張られるので、判断は勝率・中央値も併せて見ること。
 // G数は客側の行動。高稼働=高設定の証明ではないが、イベント日が客に信じられているかの傍証になる。
 
-import { mean, median, mulberry32, permutationPValue, signFlipPValue, dayContainsDigit, addDays } from "./util.mjs";
+import { mean, median, mulberry32, permutationPValue, signFlipPValue, dayContainsDigit, addDays, toDateParts } from "./util.mjs";
 
 /** イベント日定義をその日が満たすか */
 export function matchesEvent(day, def) {
@@ -81,6 +81,7 @@ function recentSplit(eventDays, restDays, lastDate, nMonths = 6) {
   const r = seg(restDays);
   const out = {
     cutoff: cut,
+    months: nMonths,
     recent: {
       nEvent: e.recent.length,
       upliftDiff: diffUplift(e.recent, r.recent, (d) => d.avgDiff),
@@ -107,7 +108,7 @@ function verdictText(split) {
   return "微妙（誤差の範囲）";
 }
 
-function analyzeEventGroup(def, days, iterations, rng) {
+function analyzeEventGroup(def, days, iterations, rng, recentMonths = 6) {
   const usable = days.filter((d) => d.winRate != null || d.avgDiff != null);
   const eventDays = usable.filter((d) => matchesEvent(d, def));
   const restDays = usable.filter((d) => !matchesEvent(d, def));
@@ -119,7 +120,7 @@ function analyzeEventGroup(def, days, iterations, rng) {
     win: compareGroups(eventDays, restDays, (d) => d.winRate, iterations, rng),
     games: compareGroups(eventDays, restDays, (d) => d.avgGames, iterations, rng),
     monthly: monthlyTrend(eventDays, restDays),
-    recent: recentSplit(eventDays, restDays, lastDate),
+    recent: recentSplit(eventDays, restDays, lastDate, recentMonths),
   };
 }
 
@@ -179,13 +180,16 @@ export function buildSeriesDays(dataset, seriesWatchlist) {
   return out;
 }
 
-function analyzeSeries(seriesDaysMap, eventDefs, iterations, rng) {
+function analyzeSeries(seriesDaysMap, eventDefs, iterations, rng, lastDate) {
   const result = [];
   for (const [name, rows] of seriesDaysMap) {
     if (!rows.length) {
-      result.push({ name, nDays: 0 });
+      // ウォッチリストにあるが設置が確認できないシリーズ（レポートでは非表示になる）
+      result.push({ name, nDays: 0, active: false });
       continue;
     }
+    const lastSeen = rows[rows.length - 1].date;
+    const active = lastDate ? lastSeen >= addDays(lastDate, -14) : true;
     const byEvent = eventDefs.map((def) => {
       const ev = rows.filter((d) => matchesEvent(d, def));
       const rest = rows.filter((d) => !matchesEvent(d, def));
@@ -212,6 +216,8 @@ function analyzeSeries(seriesDaysMap, eventDefs, iterations, rng) {
     result.push({
       name,
       nDays: rows.length,
+      lastSeen,
+      active,
       avgCount: mean(rows.map((r) => r.count).filter((v) => v)),
       meanDiff: mean(rows.map((r) => r.avgDiff)),
       winRate: mean(rows.map((r) => r.winRate)),
@@ -531,7 +537,28 @@ export function analyze(dataset, config, opts = {}) {
   const iterations = opts.iterations ?? config.analysis?.iterations ?? 2000;
   const seed = opts.seed ?? 20260612;
   const rng = mulberry32(seed);
-  const days = dataset.days;
+
+  // 分析窓: config.analysisMonths が設定されていれば「最終データ日から遡って nか月」だけを使う。
+  // 古い営業方針が今の判断を汚さないようにするため。収集済みデータ自体は消えない。
+  const windowMonths = opts.windowMonths !== undefined ? opts.windowMonths : (config.analysisMonths ?? null);
+  const totalDaysAvailable = dataset.days.length;
+  let data = dataset;
+  let windowFrom = null;
+  if (windowMonths && dataset.days.length) {
+    const lp = toDateParts(dataset.days[dataset.days.length - 1].date);
+    const co = new Date(Date.UTC(lp.y, lp.m - 1 - windowMonths, lp.d + 1));
+    windowFrom = `${co.getUTCFullYear()}-${String(co.getUTCMonth() + 1).padStart(2, "0")}-${String(co.getUTCDate()).padStart(2, "0")}`;
+    const inWindow = (r) => r.date >= windowFrom;
+    data = {
+      days: dataset.days.filter(inWindow),
+      models: dataset.models.filter(inWindow),
+      units: dataset.units.filter(inWindow),
+      suffixes: dataset.suffixes.filter(inWindow),
+    };
+  }
+  const days = data.days;
+  // 窓が短いときは「直近 vs それ以前」の比較も半分ずつに縮める
+  const recentMonths = windowMonths ? Math.max(2, Math.round(windowMonths / 2)) : 6;
   const eventDefs = config.eventDays || [];
 
   const byDayOfMonth = [];
@@ -574,31 +601,37 @@ export function analyze(dataset, config, opts = {}) {
     };
   });
 
-  const eventGroups = eventDefs.map((def) => analyzeEventGroup(def, days, iterations, rng));
-  const seriesDaysMap = buildSeriesDays(dataset, config.seriesWatchlist || []);
+  const lastDate = days.length ? days[days.length - 1].date : null;
+  const eventGroups = eventDefs.map((def) => analyzeEventGroup(def, days, iterations, rng, recentMonths));
+  const seriesDaysMap = buildSeriesDays(data, config.seriesWatchlist || []);
+  // 記念日は年1回しか起きないので、窓に関係なく全期間で評価する
+  const fullSeriesDaysMap = windowMonths ? buildSeriesDays(dataset, config.seriesWatchlist || []) : seriesDaysMap;
 
   const diffDays = days.filter((d) => d.avgDiff != null);
   return {
-    params: { iterations, seed },
+    params: { iterations, seed, windowMonths, recentMonths },
     coverage: {
       from: days.length ? days[0].date : null,
-      to: days.length ? days[days.length - 1].date : null,
+      to: lastDate,
       nDays: days.length,
+      totalDaysAvailable,
+      windowMonths,
+      windowFrom,
       nMasked: days.filter((d) => d.masked).length,
       nDiffDays: diffDays.length,
-      nUnits: dataset.units.length,
-      nModelRows: dataset.models.length,
+      nUnits: data.units.length,
+      nModelRows: data.models.length,
       meanGames: mean(days.map((d) => d.avgGames)),
     },
     byDayOfMonth,
     byWeekday,
     eventGroups,
-    models: analyzeModels(dataset, days.length ? days[days.length - 1].date : null),
+    models: analyzeModels(data, lastDate),
     statusLabels: analyzeStatusLabels(days),
-    suffix: analyzeSuffix(dataset, eventDefs, iterations, rng),
-    series: analyzeSeries(seriesDaysMap, eventDefs, iterations, rng),
-    hole: analyzeHole(dataset, eventDefs, config.hole, iterations, rng),
-    lineup: analyzeLineup(dataset),
-    anniversaries: analyzeAnniversaries(dataset, seriesDaysMap, config.anniversaries),
+    suffix: analyzeSuffix(data, eventDefs, iterations, rng),
+    series: analyzeSeries(seriesDaysMap, eventDefs, iterations, rng, lastDate),
+    hole: analyzeHole(data, eventDefs, config.hole, iterations, rng),
+    lineup: analyzeLineup(data),
+    anniversaries: analyzeAnniversaries(dataset, fullSeriesDaysMap, config.anniversaries),
   };
 }
