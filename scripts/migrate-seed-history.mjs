@@ -45,6 +45,34 @@ async function fetchDashboard() {
   return data;
 }
 
+// デプロイ済み Apps Script が「現行版」かを確認する。
+// 旧版は addResult が成功しても { appended } を返さず dashboard を返すため、
+// 成功を失敗と誤判定して 3 重書き込みする事故が起きた。さらに旧版は
+// deleteResult 未対応で、書き込んだ行を後から消せない (ロールバック不能)。
+// よって deleteResult が通る版でなければ移行を拒否する。
+async function assertDeployIsCurrent() {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "deleteResult", secret, id: "__preflight_probe__" })
+  });
+  const data = await res.json().catch(() => ({}));
+  // 現行版は該当行が無ければ { ok:true, notFound:true } を返す。
+  // 旧版は { ok:false, error:"unknown_action" }。
+  if (data.error === "unknown_action") {
+    console.error(
+      "中止: デプロイ済み Apps Script が旧版です (deleteResult 未対応)。\n" +
+      "  旧版に移行すると (1) addResult の応答形が違い 3 重書き込みになり、\n" +
+      "  (2) 書き込んだ行を後で消せません。\n" +
+      "  先に README『Apps Script を更新する手順 (再デプロイ)』で現行 Code.gs を\n" +
+      "  新バージョンとしてデプロイしてから再実行してください。"
+    );
+    process.exit(1);
+  }
+}
+
+await assertDeployIsCurrent();
 const dashboard = await fetchDashboard();
 const existing = dashboard.entries || [];
 const alreadyMigrated = existing.filter((e) => String(e.memo || "").includes(SEED_MIGRATION_MARKER));
@@ -88,7 +116,9 @@ for (let i = 0; i < rows.length; i += 1) {
         body: JSON.stringify(body)
       });
       const data = await res.json();
-      if (data.ok && (data.appended || data.duplicate)) {
+      // 成功判定は data.ok を主軸にする。appended/duplicate が付かない応答でも
+      // ok:true なら書き込みは通っているので、リトライで二重書き込みしない。
+      if (data.ok) {
         ok = true;
         if (data.appended) appended += 1;
       } else {
