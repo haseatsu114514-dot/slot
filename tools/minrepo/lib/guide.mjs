@@ -304,7 +304,7 @@ export function renderGuideFragment(analysis, config, meta) {
   const conclusionHtml = hasData
     ? `${stale}<div class="verdicts">${conclusion.join("\n")}</div>`
     : `<div class="verdict flat wide"><p class="k">まだ店のデータがありません</p><p class="why">「いつ行くか」「どの台か」の結論は、店の日ごとのデータが入ってから出ます。それまでは下の早見表・電卓・お金の計算が使えます。</p>
-<ol class="steps"><li>自宅の PC で <code>node tools/minrepo/run.mjs --backfill</code>（過去ぶんを取得）</li><li>毎朝 <code>node tools/minrepo/run.mjs</code>（前日ぶんを追加してこのシートを作り直す）</li><li>店で見た示唆景品・おすすめ週間・入替告知を CSV に 1 行ずつ足す</li></ol></div>`;
+<ol class="steps"><li>PC のブラウザでみんレポのこの店の日別ページを開き、「名前を付けて保存（HTML のみ）」。過去半年ぶん、1 日 1 ページ。</li><li>保存したファイルを <code>tools/minrepo/data/inbox/</code> に入れて <code>node tools/minrepo/run.mjs</code>。集め残しの日も表示される。</li><li>保存が手間な日は、店全体の 平均差枚・勝った台数・全台数・平均G数 だけを <code>days.csv</code> に写してもよい。</li><li>ジャグラー/ハナハナは、公式の台データを見て 総G・BIG・REG を <code>counts.csv</code> に写す。店で見た示唆景品・おすすめ週間・入替告知も CSV に 1 行ずつ足す。</li></ol></div>`;
 
   // ---- 分かってきた法則 ----
   const findings = hasData ? buildFindings(a) : [];

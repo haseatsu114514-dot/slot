@@ -13,11 +13,17 @@ export const CONFIG = {
   jitterMs: 800,
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 
-  // バックフィル範囲（か月）。サンプル数確保のため1年。数字を上げて --backfill し直せば差分だけ取得する
-  backfillMonths: 12,
+  // サイトへの自動アクセスをするか。既定は false（しない）: ブラウザで自分で開いて保存したページを
+  // data/inbox/ に置いて取り込む運用にしている。true にすると run.mjs が新しい日を自動で取りに行く
+  autoFetch: false,
 
-  // 分析設定: iterations = 並べ替え検定の反復数（サンプル数）。多いほど p値が安定する（計算は遅くなる）
-  analysis: { iterations: 4000 },
+  // 自動取得（--backfill）で遡る範囲（か月）。分析期間と同じ半年
+  backfillMonths: 6,
+
+  // 分析設定:
+  //   iterations   = 並べ替え検定の反復数。多いほど p値が安定する（計算は遅くなる）
+  //   windowMonths = 分析に使う期間（か月）。直近この期間だけを見る。店の運用は変わるので半年を既定にしている
+  analysis: { iterations: 4000, windowMonths: 6 },
 
   // 機種別詳細（?kishu=）の取得対象。
   //   mode: "watchlist" = 下の seriesWatchlist に該当する機種のみ / "all" = 全機種 / "none" = 取得しない

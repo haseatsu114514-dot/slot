@@ -1,6 +1,6 @@
 # タイホウ亀島店 設定狙い分析ツール（min-repo データ）
 
-[みんレポ (min-repo.com)](https://min-repo.com/) が公開しているタイホウ亀島店の日次スロットデータを取得・蓄積し、
+[みんレポ (min-repo.com)](https://min-repo.com/) が公開しているタイホウ亀島店の日次スロットデータを（手で保存したページや手入力から）取り込んで蓄積し、
 「設定が入ってそうな場所・法則性」を自動で分析してレポートにするツール。依存パッケージ無し（Node 18+ のみ）。
 
 分析できるもの:
@@ -26,21 +26,56 @@
 - **新台・増台・減台・撤去の自動検知** — 設置構成の変化から検出し、導入直後の扱いも集計
 - **キャラ誕生日・記念日** — config の仮説リスト + シリーズ×(月,日) の自動スキャン
 
-## 使い方
+## 使い方（手動が基本）
+
+**サイトへの自動アクセスは既定でオフ**（`config.mjs` の `autoFetch: false`）。自分でブラウザを開いて見たもの・保存したものだけを材料にする。
+分析に使うのは**直近 6 か月**（`config.mjs` の `analysis.windowMonths`）。
+
+### 1. 過去半年ぶんを集める（どれか、または組み合わせ）
+
+| やり方 | 手間 | 分かること |
+|---|---|---|
+| **A. 日別ページを保存する**（1 日 1 ページ） | 半年で約 180 回の保存 | 出す日・回収する日、機種別・末尾・スマスロ等の分類別 |
+| **B. 日別の数字だけ写す**（`days.csv`） | 1 日 4 つの数字 | 出す日・回収する日（機種別は出ない） |
+| **C. 機種別ページも保存する**（ジャグラー/ハナハナぶん） | 1 日あたり機種数ぶん追加 | 台番ごとの設定推定・凹み台・狙い台（過去ぶん） |
+
+- **A / C**: PC のブラウザでみんレポのこの店の日別ページを開き、「名前を付けて保存」→「ウェブページ、HTML のみ」。
+  保存したファイルを `tools/minrepo/data/inbox/` に入れて取り込む。ファイル名は何でもよい（中身から日付と種類を見分ける）。
+  機種別ページ（機種名のリンク先。URL に `?kishu=` が付く）も同じフォルダに入れてよい。
+
+  ```sh
+  node tools/minrepo/run.mjs import     # 取り込み。直近 6 か月でまだ無い日も表示される
+  ```
+
+  取り込めたファイルは `inbox/imported/` へ移る。見分けられなかったファイルは理由つきで残る
+  （機種別ページで機種名が分からないときは、ファイル名を `機種名.html` にして入れ直す）。
+- **B**: `node tools/minrepo/run.mjs sheet` で `data/manual/days.csv` ができる。1 日 1 行、店全体の
+  平均差枚・勝った台数・全台数・平均G数 を書く（勝率を % で書くときは `win` に `41%`、`total` は空）。
+  保存ページがある日はそちらが優先され、無い日だけ `days.csv` で埋まる。
+- 全部を一度にやらなくてよい。まず A か B で半年ぶんの「日」を揃え、ジャグラー/ハナハナの台番別は
+  これからの分を公式台データから `counts.csv` に写していくのが現実的（下の「ジャグラー / ハナハナの設定狙い」）。
+
+### 2. 分析して見る
 
 ```sh
-# 初回: 過去 12 か月ぶんを取得（config.mjs の backfillMonths で変更可）
-node tools/minrepo/run.mjs --backfill
-
-# 量が多いので分割するなら（再実行すると続きから取得する）
-node tools/minrepo/run.mjs --backfill --limit 60
-
-# 2回目以降（毎日 or 数日おき）: 新しい日だけ取得して再分析
+# inbox の取り込み → パース → 分析 → 攻略シート/レポート（サイトにはアクセスしない）
 node tools/minrepo/run.mjs
 
-# 「狙い日」計算の基準日を指定してレポートだけ作り直す（例: 明日向け）
-node tools/minrepo/run.mjs report --date 2026-06-13
+# 「狙い日」計算の基準日を指定して作り直す（例: 明日向け）
+node tools/minrepo/run.mjs report --date 2026-11-13
 ```
+
+### 自動取得を使う場合（任意）
+
+みんレポの利用条件を自分で確認し、問題ないと判断した場合だけ使う。既定では動かない。
+
+```sh
+node tools/minrepo/run.mjs --backfill             # 過去 6 か月ぶん（config.mjs の backfillMonths）
+node tools/minrepo/run.mjs --backfill --limit 60  # 分割して少しずつ
+node tools/minrepo/run.mjs fetch                  # 新しい日だけ
+```
+
+毎回自動で取りに行かせたいときは `config.mjs` の `autoFetch: true`。その場合の注意は「重要な注意」を参照。
 
 **まず開くのは `data/guide.html`（攻略シート）。** 「次に行くなら何日か・避けるなら何日か」「狙い台」「分かってきた法則（確か / たぶん / 差は見えない）」
 「REG 回数の早見表と設定判別の電卓」「換金ギャップの計算」「現地チェックリスト」を、数字の表を読まなくても分かる言葉で 1 ページにまとめたもの。
@@ -58,27 +93,18 @@ node tools/minrepo/run.mjs report --date 2026-06-13
 | `report.md` | 上位の発見だけのダイジェスト |
 | `days.csv` / `models.csv` / `units.csv` / `suffixes.csv` | 自分で Excel 等で分析する用の生データ |
 | `analysis.json` | 全分析結果（レポートに出ない詳細含む） |
-| `raw/` | 取得した HTML のキャッシュ（パーサ改良後に `run.mjs parse` で再解釈できる） |
+| `raw/` | 取り込んだ HTML の置き場（パーサ改良後に `run.mjs parse` で再解釈できる） |
+| `inbox/` | 手で保存したページを入れる場所（取り込み済みは `inbox/imported/` へ移る） |
+| `manual/` | 手入力の CSV（`days.csv` / `counts.csv` / `observations.csv` / `calendar.csv`） |
 
 仮説の追加・変更は `config.mjs` を編集（イベント日・注目機種・誕生日・凹みの閾値）。
 取得し直さなくても `node tools/minrepo/run.mjs parse && node tools/minrepo/run.mjs analyze && node tools/minrepo/run.mjs report` で再計算できる。
-
-### 自動実行（できる限り自動で）
-
-自宅の PC で定期実行する。**クラウド（GitHub Actions 等）からは実行しない**こと（下記の注意参照）。
-
-- macOS / Linux（cron）: `crontab -e` に
-  `30 6 * * * cd /path/to/slot && /usr/bin/node tools/minrepo/run.mjs >> tools/minrepo/data/cron.log 2>&1`
-- Windows（タスクスケジューラ）: 「基本タスクの作成」→ 毎日 6:30 →
-  プログラム `node` / 引数 `tools\minrepo\run.mjs` / 開始場所はリポジトリのフォルダ
-
-min-repo の記事は毎日 1〜4 時頃（前日分）に投稿されるので、朝に回すのがよい。
 
 ## ジャグラー / ハナハナの設定狙い
 
 データをどこから取るか・なぜそれで設定が分かると言えるのか・限界は [DATA_SOURCES.md](DATA_SOURCES.md) にまとめてある。要点だけ:
 
-- みんレポの台番別データ（差枚・G数）が取れていれば、何もしなくても推定が始まる。
+- みんレポの機種別ページ（台番ごとの差枚・G数）を取り込んであれば、それだけで推定が始まる。
 - **BIG・REG 回数が入ると精度が大きく上がる。** 店の公式台データは規約上プログラムで取らないので、見て書き写す:
 
   ```sh
@@ -92,6 +118,7 @@ min-repo の記事は毎日 1〜4 時頃（前日分）に投稿されるので�
 
   | ファイル | 列 | 例 |
   |---|---|---|
+  | `days.csv` | `date,avgDiff,win,total,avgGames,note` | `2026-11-10,-85,128,320,3150,` |
   | `counts.csv` | `date,unit,model,games,bb,rb,diff,grape,grapeGames,note` | `2026-11-10,512,マイジャグラーV,6480,28,31,+1850,,,` |
   | `observations.csv` | `date,unit,tag,note` | `2026-11-10,512,示唆景品,台上にお菓子` |
   | `calendar.csv` | `date,dateTo,kind,target,note` | `2026-11-17,,入替,,新台入替 9時開店` |
@@ -152,9 +179,10 @@ min-repo の記事は毎日 1〜4 時頃（前日分）に投稿されるので�
 
 ## 重要な注意
 
-- **自宅回線で実行すること。** min-repo はデータセンター系 IP からのアクセスに *ダミー値*（差枚 0/±1・出率 100% 張り付き）を
-  返すことがある。本ツールはこれを検知すると即中断する（ゴミデータ蓄積防止）。中断メッセージが出たら環境を変えること。
-- **マナー**: リクエスト間隔は既定 2 秒 + ジッタ。短くしないこと。バックフィルは `--limit` で数日に分けると行儀がよい。
+- **既定ではサイトに自動アクセスしない。** 手で保存したページと手入力の CSV だけで動く。以下 2 点は自動取得を使う場合だけの注意。
+- （自動取得を使う場合）**自宅回線で実行すること。** min-repo はデータセンター系 IP からのアクセスに *ダミー値*（差枚 0/±1・出率 100% 張り付き）や
+  空の応答を返す。本ツールはダミー値を検知すると即中断する。サイト側が機械的なアクセスを歓迎していない合図でもあるので、利用条件を確認してから使うこと。
+- （自動取得を使う場合）**マナー**: リクエスト間隔は既定 2 秒 + ジッタ。短くしないこと。バックフィルは `--limit` で数日に分ける。
 - **店の公式台データ（台データオンライン系）はプログラムで取得しない。** 規約がデータベースの複製と第三者への提供を禁じている。
   見て `counts.csv` に写すのは自分用のメモの範囲に留め、公開・共有しないこと。
 - **私的利用の範囲で。** データは min-repo の独自調査値（推定値）であり、レポートや CSV を再配布・転載しないこと。
@@ -172,21 +200,23 @@ min-repo の記事は毎日 1〜4 時頃（前日分）に投稿されるので�
 
 ## 仕組み
 
-1. WordPress REST API（`/wp-json/wp/v2/posts?search=タイホウ亀島`）で記事一覧（日付 → 記事URL）を列挙
-2. 各日のレポート HTML を取得して `data/raw/YYYY-MM-DD.html` にキャッシュ
+1. 手で保存したページを `data/inbox/` から取り込み、日付ごとに `data/raw/YYYY-MM-DD.html` へ置く
+   （自動取得を使う場合は、WordPress REST API で記事一覧を列挙して各日の HTML を取得する）
+2. 手入力の CSV（`data/manual/`）を読み込む
 3. テーブル（概況 / 機種別 / バラエティ台番別 / 末尾別）をパースして tidy な CSV / JSON に変換
 4. 分析（並べ替え検定・符号反転検定で p値を出す）→ HTML / Markdown レポート生成
 
 ```
 tools/minrepo/
-  run.mjs          エントリポイント（fetch / parse / analyze / report / guide / sheet / judge）
+  run.mjs          エントリポイント（import / parse / analyze / report / guide / sheet / judge、任意で fetch）
   config.mjs       店・仮説・マナーの設定
   lib/parse.mjs    HTML パーサ（純粋関数）
   lib/dataset.mjs  tidy データ化・CSV 出力（純粋関数）
   lib/analyze.mjs  分析エンジン（純粋関数）
   lib/report.mjs   レポート生成（純粋関数）
-  lib/wp.mjs       記事一覧の列挙
-  lib/http.mjs     行儀のよい fetch
+  lib/import.mjs   手で保存したページの判別（店全体ページ / 機種別ページ、日付・機種名の読み取り）
+  lib/wp.mjs       記事一覧の列挙（自動取得を使う場合のみ）
+  lib/http.mjs     行儀のよい fetch（自動取得を使う場合のみ）
   lib/util.mjs     数値・日付・統計
   lib/specs.mjs    ジャグラー/ハナハナの設定別スペック表（確認元つき）と機種名の照合
   lib/settei.mjs   設定推定の計算（尤度・事後確率・設定配分の EM 推定）
@@ -200,7 +230,7 @@ tools/minrepo/
   DATA_SOURCES.md  データ源と根拠・限界
 ```
 
-テスト: `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs` / `node tests/minrepo-guide.test.mjs`
+テスト: `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs` / `node tests/minrepo-guide.test.mjs` / `node tests/minrepo-import.test.mjs`
 （settei / calendar / guide は既知の法則を仕込んだ合成データで、分析が法則を検出できるか・法則が無いときに「ある」と言わないかを確かめる）。
 
 ## 読み方のコツ

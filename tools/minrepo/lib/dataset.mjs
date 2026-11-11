@@ -128,6 +128,31 @@ export function buildDataset(records) {
   return { days, models, units, suffixes };
 }
 
+/** date（"YYYY-MM-DD"）の months か月前の日付 */
+export function monthsBefore(date, months) {
+  const [y, m, d] = date.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1 - months, d));
+  // 月末のずれ（8/31 の 6 か月前 → 2/31 → 3/3）は、その月の末日に丸める
+  if (t.getUTCDate() !== d) t.setUTCDate(0);
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * 分析に使う期間を絞る。from 以降の行だけを残した新しい dataset を返す（手入力のメモは先の日付も残す）。
+ * 店の運用は変わるので、古すぎるデータを混ぜると今のクセが薄まる。既定は直近 6 か月。
+ */
+export function limitDataset(dataset, from) {
+  const keep = (rows) => (rows || []).filter((r) => r.date >= from);
+  return {
+    ...dataset,
+    days: keep(dataset.days),
+    models: keep(dataset.models),
+    units: keep(dataset.units),
+    suffixes: keep(dataset.suffixes),
+    manual: dataset.manual ? { observations: keep(dataset.manual.observations), calendar: keep(dataset.manual.calendar) } : dataset.manual,
+  };
+}
+
 /** CSV 文字列化（Excel 向けに BOM 付き）。rows はオブジェクト配列、columns は列名配列。 */
 export function toCsv(rows, columns) {
   const esc = (v) => {

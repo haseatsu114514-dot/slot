@@ -1,16 +1,17 @@
 // fetch → parse → analyze → report の各ステップ（ファイルIOあり）。
 
-import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, appendFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, appendFileSync, renameSync, statSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { politeFetchText } from "./http.mjs";
 import { listStorePosts } from "./wp.mjs";
 import { parseReportPage, parseUnitTable, detectMasked } from "./parse.mjs";
-import { buildDataset, toCsv } from "./dataset.mjs";
+import { buildDataset, toCsv, limitDataset, monthsBefore } from "./dataset.mjs";
+import { classifySavedPage, missingDates } from "./import.mjs";
 import { analyze } from "./analyze.mjs";
 import { renderHtml, renderMarkdown } from "./report.mjs";
 import { renderGuideHtml, renderGuideFragment } from "./guide.mjs";
-import { MANUAL_FILES, parseCounts, parseObservations, parseCalendar, mergeCounts, templateCsv, buildCountsSheet } from "./manual.mjs";
+import { MANUAL_FILES, parseCounts, parseObservations, parseCalendar, parseDays, mergeCounts, mergeDays, templateCsv, buildCountsSheet } from "./manual.mjs";
 import { matchSpec, ATYPE_SPECS } from "./specs.mjs";
 import { atypeConfig } from "./atype.mjs";
 import { unitLogLik, posterior, probAtLeast, expectedPayout, normalize, uniformPrior } from "./settei.mjs";
@@ -20,6 +21,7 @@ export const DATA_DIR = join(TOOL_DIR, "data");
 const RAW_DIR = join(DATA_DIR, "raw");
 const KISHU_DIR = join(DATA_DIR, "raw", "kishu");
 export const MANUAL_DIR = join(DATA_DIR, "manual");
+export const INBOX_DIR = join(DATA_DIR, "inbox");
 
 function ensureDirs() {
   for (const d of [DATA_DIR, RAW_DIR, KISHU_DIR]) mkdirSync(d, { recursive: true });
@@ -46,6 +48,7 @@ function readManual(log = console.log) {
     counts: read("counts", parseCounts),
     observations: read("observations", parseObservations),
     calendar: read("calendar", parseCalendar),
+    days: read("days", parseDays),
   };
 }
 
@@ -166,6 +169,73 @@ export async function fetchStep(config, opts = {}, log = console.log) {
   return { fetched, aborted: null };
 }
 
+/**
+ * 手で保存したページの取り込み（自動取得を使わない運用の入口）。
+ * data/inbox/（または opts.from）に置かれた .html を見分けて、
+ *   その日の店全体ページ → raw/YYYY-MM-DD.html
+ *   機種別の詳細ページ   → raw/kishu/YYYY-MM-DD/<機種>.html
+ * に振り分ける。取り込めたファイルは inbox/imported/ へ移す（消さない）。
+ */
+export function importStep(config, opts = {}, log = console.log) {
+  ensureDirs();
+  mkdirSync(INBOX_DIR, { recursive: true });
+  const inbox = opts.from ? resolve(opts.from) : INBOX_DIR;
+  if (!existsSync(inbox)) throw new Error(`フォルダが無い: ${inbox}`);
+  const files = readdirSync(inbox).filter((f) => /\.html?$/i.test(f) && statSync(join(inbox, f)).isFile()).sort();
+  const today = todayStr();
+  const result = { reports: [], kishu: 0, skipped: [] };
+  if (files.length) {
+    const indexPath = join(DATA_DIR, "index.json");
+    const index = readJson(indexPath, []);
+    const byDate = new Map(index.map((p) => [p.dataDate, p]));
+    const doneDir = join(inbox, "imported");
+    mkdirSync(doneDir, { recursive: true });
+    for (const f of files) {
+      const html = readFileSync(join(inbox, f), "utf8");
+      const info = classifySavedPage(html, { today, storeQuery: config.searchQuery, fileName: f });
+      for (const w of info.warnings) log(`  注意（${f}）: ${w}`);
+      if (info.kind === "report") {
+        writeFileSync(join(RAW_DIR, `${info.date}.html`), html);
+        if (!byDate.has(info.date)) byDate.set(info.date, { postId: null, link: info.url, title: info.title, postDate: null, dataDate: info.date });
+        result.reports.push(info.date);
+      } else if (info.kind === "kishu") {
+        const dayDir = join(KISHU_DIR, info.date);
+        mkdirSync(dayDir, { recursive: true });
+        const metaPath = join(dayDir, "_index.json");
+        const meta = readJson(metaPath, {});
+        const file = `${b64(info.model)}.html`;
+        writeFileSync(join(dayDir, file), html);
+        meta[file] = info.model;
+        writeFileSync(metaPath, JSON.stringify(meta, null, 1));
+        result.kishu++;
+      } else {
+        result.skipped.push({ file: f, reason: info.reason });
+        log(`  取り込めない: ${f} — ${info.reason}`);
+        continue;
+      }
+      let dest = join(doneDir, f);
+      for (let n = 2; existsSync(dest); n++) dest = join(doneDir, f.replace(/(\.html?)$/i, `-${n}$1`));
+      renameSync(join(inbox, f), dest);
+    }
+    writeFileSync(indexPath, JSON.stringify([...byDate.values()].sort((a, b) => (a.dataDate < b.dataDate ? -1 : 1)), null, 1));
+    const dates = [...new Set(result.reports)].sort();
+    log(`取り込み: 店全体ページ ${dates.length}日ぶん${dates.length ? `（${dates[0]} 〜 ${dates.at(-1)}）` : ""} / 機種別ページ ${result.kishu}枚 / 取り込めず ${result.skipped.length}枚`);
+  } else if (opts.verbose) {
+    log(`取り込むファイルが無い（${inbox} に、保存した .html を置く）`);
+  }
+  // 集め残しの確認: 直近 windowMonths か月のうち、まだ無い日
+  const months = config.analysis?.windowMonths || 6;
+  const have = readdirSync(RAW_DIR).filter((f) => /^\d{4}-\d{2}-\d{2}\.html$/.test(f)).map((f) => f.slice(0, 10));
+  const typed = readManual(() => {}).days.map((d) => d.date);
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const missing = missingDates([...have, ...typed], monthsBefore(yesterday, months), yesterday);
+  result.missing = missing;
+  if (files.length || opts.verbose) {
+    log(missing.length ? `直近 ${months} か月でまだ無い日: ${missing.length}日（新しい順に ${missing.slice(-8).reverse().join(", ")}${missing.length > 8 ? " …" : ""}）` : `直近 ${months} か月ぶんは揃っている`);
+  }
+  return result;
+}
+
 /** raw/*.html をパースして dataset.json と CSV 群を書き出す */
 export function parseStep(config, log = console.log) {
   ensureDirs();
@@ -204,9 +274,10 @@ export function parseStep(config, log = console.log) {
   // 手入力データ（公式台データの写し・現地メモ・入替日）を統合する
   const manual = readManual(log);
   dataset.units = mergeCounts(dataset.units, manual.counts);
+  dataset.days = mergeDays(dataset.days, manual.days);
   dataset.manual = { observations: manual.observations, calendar: manual.calendar };
-  if (manual.counts.length || manual.observations.length || manual.calendar.length) {
-    log(`手入力データを統合: counts ${manual.counts.length}行 / observations ${manual.observations.length}行 / calendar ${manual.calendar.length}行`);
+  if (manual.counts.length || manual.observations.length || manual.calendar.length || manual.days.length) {
+    log(`手入力データを統合: days ${manual.days.length}行 / counts ${manual.counts.length}行 / observations ${manual.observations.length}行 / calendar ${manual.calendar.length}行`);
   }
   writeFileSync(join(DATA_DIR, "dataset.json"), JSON.stringify(dataset));
   writeFileSync(join(DATA_DIR, "days.csv"), toCsv(dataset.days, ["date", "y", "m", "d", "weekday", "nthWeekday", "status", "avgGames", "win", "total", "winRate", "avgDiff", "masked"]));
@@ -220,7 +291,18 @@ export function parseStep(config, log = console.log) {
 export function analyzeStep(config, log = console.log) {
   const dataset = readJson(join(DATA_DIR, "dataset.json"), null);
   if (!dataset) throw new Error("dataset.json が無い。先に parse を実行すること。");
-  const analysis = analyze(dataset, config);
+  // 分析に使うのは直近 windowMonths か月（既定 6）。店の運用は変わるので、古いデータを混ぜすぎない
+  const months = config.analysis?.windowMonths;
+  const lastDate = [...(dataset.days || []), ...(dataset.units || [])].map((r) => r.date).sort().at(-1);
+  let data = dataset;
+  let window = null;
+  if (months && lastDate) {
+    window = { months, from: monthsBefore(lastDate, months), to: lastDate };
+    data = limitDataset(dataset, window.from);
+    log(`分析期間: 直近 ${months} か月（${window.from} 〜 ${lastDate}・${data.days.length}日ぶん）`);
+  }
+  const analysis = analyze(data, config);
+  analysis.window = window;
   writeFileSync(join(DATA_DIR, "analysis.json"), JSON.stringify(analysis, null, 1));
   log(`分析完了 → data/analysis.json`);
   return analysis;

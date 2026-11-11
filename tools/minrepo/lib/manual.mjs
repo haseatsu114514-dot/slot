@@ -17,6 +17,10 @@ export const MANUAL_FILES = {
     name: "observations.csv",
     columns: ["date", "unit", "tag", "note"],
   },
+  days: {
+    name: "days.csv",
+    columns: ["date", "avgDiff", "win", "total", "avgGames", "note"],
+  },
   calendar: {
     name: "calendar.csv",
     columns: ["date", "dateTo", "kind", "target", "note"],
@@ -124,6 +128,76 @@ export function parseCounts(text) {
     });
   });
   return { rows, errors };
+}
+
+/**
+ * days.csv（店全体の日ごとの数字を手で写したもの）→ { rows: [{date, avgDiff, win, total, winRate, avgGames}], errors }
+ * 勝率は win / total（勝った台数 / 全台数）で書く。total が空で win が 0〜100 の数なら「勝率%」として読む。
+ */
+export function parseDays(text) {
+  const rows = [];
+  const errors = [];
+  csvToObjects(text).forEach((o, idx) => {
+    if (isComment(o)) return;
+    const date = normalizeDate(o.date);
+    const avgDiff = parseNumber(o.avgDiff);
+    const win = parseNumber(String(o.win ?? "").replace(/[%％]/g, ""));
+    const total = parseNumber(o.total);
+    const avgGames = parseNumber(o.avgGames);
+    if (!date && avgDiff == null && win == null) return;
+    if (!date) {
+      errors.push(`days.csv ${idx + 2}行目: date が読めない（${o.date ?? ""}）`);
+      return;
+    }
+    if (avgDiff == null && win == null) return; // 未記入
+    let winRate = null;
+    if (win != null && total) winRate = win / total;
+    else if (win != null && win >= 0 && win <= 100) winRate = win / 100;
+    if ((win != null && !total && win > 100) || (winRate != null && (winRate < 0 || winRate > 1))) {
+      errors.push(`days.csv ${idx + 2}行目: 勝率が 0〜100% に収まっていない（win に台数を書くときは total に全台数も書く）`);
+      return;
+    }
+    rows.push({ date, avgDiff, win: total ? win : null, total: total || null, winRate, avgGames });
+  });
+  return { rows, errors };
+}
+
+/**
+ * 手入力の日別データを dataset.days に統合する。保存ページから読めた日はそちらを優先し、
+ * データの無い日（またはその日の平均差枚が空）だけを手入力で埋める。
+ */
+export function mergeDays(days, manualDays) {
+  const out = days.map((d) => ({ ...d }));
+  if (!manualDays || !manualDays.length) return out;
+  const byDate = new Map(out.map((d) => [d.date, d]));
+  for (const m of manualDays) {
+    const cur = byDate.get(m.date);
+    if (cur && cur.avgDiff != null && !cur.masked) continue;
+    const [y, mo, d] = m.date.split("-").map(Number);
+    const row = {
+      date: m.date,
+      postId: cur ? cur.postId : null,
+      y,
+      m: mo,
+      d,
+      weekday: new Date(Date.UTC(y, mo - 1, d)).getUTCDay(),
+      nthWeekday: Math.ceil(d / 7),
+      status: cur ? cur.status : null,
+      oldEventDays: cur ? cur.oldEventDays : null,
+      avgGames: m.avgGames ?? (cur ? cur.avgGames : null),
+      win: m.win ?? (cur ? cur.win : null),
+      total: m.total ?? (cur ? cur.total : null),
+      winRate: m.winRate ?? (cur ? cur.winRate : null),
+      avgDiff: m.avgDiff,
+      masked: false,
+      src: "manual",
+    };
+    if (cur) out[out.indexOf(cur)] = row;
+    else out.push(row);
+    byDate.set(m.date, row);
+  }
+  out.sort((a, b) => (a.date < b.date ? -1 : 1));
+  return out;
 }
 
 /**
@@ -277,6 +351,7 @@ export function templateCsv(kind) {
   const examples = {
     counts: ["# 例: 2026-11-08", "512", "マイジャグラーV", "6480", "28", "31", "+1850", "", "", "公式台データより（#で始まる行は無視される）"],
     observations: ["# 例: 2026-11-08", "512", "示唆景品", "台上にお菓子の景品が置いてあった（#で始まる行は無視される）"],
+    days: ["# 例: 2026-11-10", "-85", "128", "320", "3150", "店全体の 平均差枚 / 勝った台数 / 全台数 / 平均G数（#で始まる行は無視される）"],
     calendar: ["# 例: 2026-11-10", "2026-11-16", "おすすめ週間", "北斗|カバネリ", "期間は dateTo に終わりの日、target は対象機種（任意）。#で始まる行は無視される"],
   };
   return `${def.columns.join(",")}\n${examples[kind].map(escCsv).join(",")}\n`;

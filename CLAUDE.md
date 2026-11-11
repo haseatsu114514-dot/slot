@@ -11,7 +11,7 @@ Claude Code がこのリポジトリで作業する際のガイド。
 - ローカル確認: `index.html` をブラウザで直接開く（ビルド不要）
 - テスト: `node tests/kanshi-data.test.mjs` と `node tests/code-gs-parity.test.mjs`（フレームワーク無し、`node:assert` のみ）
   - `code-gs-parity` は `Code.gs` と `kanshi-data.js` のスコアリングが一致するかを vm サンドボックスで照合する。スコア計算を触ったら必ず両方実行
-  - `tools/minrepo` を触ったら `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs` / `node tests/minrepo-guide.test.mjs` も実行
+  - `tools/minrepo` を触ったら `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs` / `node tests/minrepo-guide.test.mjs` / `node tests/minrepo-import.test.mjs` も実行
 - ホスティング: GitHub Pages などに静的配信
 - Sheets 同期: `google-apps-script/Code.gs` を Apps Script 側に貼り付け Web アプリとしてデプロイ、`window.SLOT_APP_CONFIG.syncEndpoint` に URL を設定
 
@@ -29,6 +29,7 @@ Claude Code がこのリポジトリで作業する際のガイド。
   - ジャグラー/ハナハナの設定推定（`lib/specs.mjs` スペック表 → `lib/settei.mjs` 尤度・EM → `lib/atype.mjs` 仮説検証・狙い台）を含む。データ源と根拠は `tools/minrepo/DATA_SOURCES.md`
   - `lib/specs.mjs` の数値は解析サイト掲載値（2 サイト以上で突き合わせ済み）。変更・追加するときは確認元 URL を `sources` に書く（`validateSpecs` がテストで整合性を見る）
   - 全台・日単位の営業カレンダー分析（`lib/calendar.mjs`: 年金支給日・給料日・連休・入替前後・手入力の景品示唆/おすすめ週間・回収日の傾向・スマスロ等の分類別）も含む
+  - **データ集めは手動が既定**（`config.mjs` の `autoFetch: false`）。手で保存したページを `data/inbox/` から取り込む（`lib/import.mjs`、`run.mjs import`）か、`data/manual/days.csv` に数字を写す。分析は直近 6 か月（`analysis.windowMonths`）。自動取得のコード（`fetchStep`）は残っているが、明示的に頼まれたとき以外は既定を自動に戻さない
   - 出力は 2 つ: `data/guide.html`（攻略シート。結論を言葉でまとめた 1 ページ。`lib/guide.mjs`）と `data/report.html`（全部の表）。攻略シートは専門用語を使わず「確か / たぶん / 差は見えない」で書く方針
   - 手入力データ（公式台データの写し・示唆景品メモ・入替日・景品示唆やおすすめ週間の日付）は `tools/minrepo/data/manual/*.csv`。店の公式台データをプログラムで取得するコードは足さない（規約上の理由。DATA_SOURCES.md 参照）
 
