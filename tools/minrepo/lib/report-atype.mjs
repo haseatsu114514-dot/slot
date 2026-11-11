@@ -378,6 +378,7 @@ ${table(
 }
 
 export const ATYPE_CSS = `
+[hidden]{display:none!important}
 .mixbar{display:flex;height:14px;min-width:120px;border-radius:4px;overflow:hidden;background:#eceff1}
 .mixbar span{display:block;height:100%}
 .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 3px 0 8px;vertical-align:-1px}
@@ -393,8 +394,11 @@ td.l{text-align:left;white-space:normal;min-width:180px}
 .jg-head{font-size:.95rem;margin:.2em 0 .5em}
 `;
 
-/** 設定判別電卓のスクリプト（レポート HTML に埋め込む。依存なし） */
-export function atypeScript(a, config) {
+/**
+ * 設定判別電卓のスクリプト（レポート / 攻略シートの HTML に埋め込む。依存なし）
+ * opts.colors: 設定1〜6 のバーの色（CSS の色指定。既定は固定色、攻略シートではテーマ変数を渡す）
+ */
+export function atypeScript(a, config, opts = {}) {
   const t = a.atype;
   const cfgPrior = (config.atype && config.atype.prior) || ATYPE_DEFAULTS.prior;
   const data = {
@@ -402,7 +406,7 @@ export function atypeScript(a, config) {
     storePi: t && t.available ? t.mix.pi : cfgPrior,
     modelPi: t && t.available ? Object.fromEntries(t.byModel.filter((m) => m.pi && m.n >= 100).map((m) => [m.specId, m.pi])) : {},
     highFrom: (t && t.config && t.config.highFrom) || ATYPE_DEFAULTS.highFrom,
-    colors: SET_COLORS,
+    colors: opts.colors || SET_COLORS,
   };
   return `
 // 設定判別（BIG/REG 回数からのベイズ推定。lib/settei.mjs の logLikCounts と同じ式）
@@ -414,7 +418,7 @@ export function atypeScript(a, config) {
   function calc(){
     var spec=JG.specs.filter(function(s){return s.id===$("jg-model").value})[0];
     $("jg-grl").textContent=spec.grapeLabel;
-    Array.prototype.forEach.call(document.querySelectorAll(".jg-grape"),function(el){el.style.display=spec.grape?"":"none"});
+    Array.prototype.forEach.call(document.querySelectorAll(".jg-grape"),function(el){el.hidden=!spec.grape});
     var g=numOf("jg-g"),bb=numOf("jg-bb"),rb=numOf("jg-rb"),gr=numOf("jg-gr"),grg=numOf("jg-grg");
     var out=$("jg-out");
     if(g==null||bb==null||rb==null||g<=0){out.innerHTML='<p class="note">総G数・BIG・REG を入れると結果が出る。</p>';return}

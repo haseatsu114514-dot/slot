@@ -132,7 +132,7 @@
 
 ## 5. 毎日の回し方
 
-1. 朝: `node tools/minrepo/run.mjs`（自宅 PC）→ `data/report.html` をスマホで開く →「狙い台」と検証結果を確認
+1. 朝: `node tools/minrepo/run.mjs`（自宅 PC）→ `data/guide.html`（攻略シート）をスマホで開く → 結論と狙い台を確認（根拠の表は `data/report.html`）
 2. 店で: 示唆景品や札を見かけたら、結果を見る前にメモ（→ `observations.csv`）。気になる台はレポート内の「設定判別」に 総G・BIG・REG を入れる
 3. 夜か翌朝: 公式台データを見て `counts.csv` を埋める（`run.mjs sheet --date 前日` で記入行が出る）
 4. 入替の告知・景品示唆・おすすめ週間を見たら `calendar.csv` に 1 行足す（先の日付でもよい）

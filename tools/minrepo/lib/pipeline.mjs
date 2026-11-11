@@ -9,6 +9,7 @@ import { parseReportPage, parseUnitTable, detectMasked } from "./parse.mjs";
 import { buildDataset, toCsv } from "./dataset.mjs";
 import { analyze } from "./analyze.mjs";
 import { renderHtml, renderMarkdown } from "./report.mjs";
+import { renderGuideHtml, renderGuideFragment } from "./guide.mjs";
 import { MANUAL_FILES, parseCounts, parseObservations, parseCalendar, mergeCounts, templateCsv, buildCountsSheet } from "./manual.mjs";
 import { matchSpec, ATYPE_SPECS } from "./specs.mjs";
 import { atypeConfig } from "./atype.mjs";
@@ -236,7 +237,23 @@ export function reportStep(config, opts = {}, log = console.log) {
   };
   writeFileSync(join(DATA_DIR, "report.html"), renderHtml(analysis, config, meta));
   writeFileSync(join(DATA_DIR, "report.md"), renderMarkdown(analysis, config, meta.generatedAt));
-  log(`レポート生成（狙い日基準 ${meta.today}）→ data/report.html, data/report.md`);
+  writeFileSync(join(DATA_DIR, "guide.html"), renderGuideHtml(analysis, config, meta));
+  log(`レポート生成（狙い日基準 ${meta.today}）→ data/guide.html（攻略シート）, data/report.html（全部の表）, data/report.md`);
+}
+
+/**
+ * 攻略シート（guide.html）だけを作る。analysis.json が無くても、早見表・電卓・お金の計算だけの版が出る。
+ * opts.date: 基準日 / opts.fragment: true なら <html> タグ無しの中身だけを guide.fragment.html に書く
+ */
+export function guideStep(config, opts = {}, log = console.log) {
+  ensureDirs();
+  if (opts.date && !/^\d{4}-\d{2}-\d{2}$/.test(opts.date)) throw new Error("--date は YYYY-MM-DD 形式で指定すること。");
+  const analysis = readJson(join(DATA_DIR, "analysis.json"), null);
+  const meta = { generatedAt: new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), today: opts.date || todayStr() };
+  const path = join(DATA_DIR, opts.fragment ? "guide.fragment.html" : "guide.html");
+  writeFileSync(path, opts.fragment ? renderGuideFragment(analysis, config, meta) : renderGuideHtml(analysis, config, meta));
+  log(`攻略シート生成（${analysis ? "店のデータあり" : "店のデータなし: 早見表と計算のみ"}・基準 ${meta.today}）→ ${path}`);
+  return path;
 }
 
 /**

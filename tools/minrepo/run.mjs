@@ -15,7 +15,9 @@
 //   node tools/minrepo/run.mjs judge --model マイジャグラーV --games 3200 --bb 13 --rb 14   # その場で設定判別
 //     （--grape ぶどう回数 --grape-games 数えたG数 / --diff 差枚だけで判別 / --flat 全設定同確率を前提にする）
 
-import { fetchStep, parseStep, analyzeStep, reportStep, sheetStep, judgeStep } from "./lib/pipeline.mjs";
+//   node tools/minrepo/run.mjs guide [--date 2026-11-12]   # 攻略シート（data/guide.html）だけ作り直す。データが無くても作れる
+
+import { fetchStep, parseStep, analyzeStep, reportStep, sheetStep, judgeStep, guideStep } from "./lib/pipeline.mjs";
 import { CONFIG } from "./config.mjs";
 
 const args = process.argv.slice(2);
@@ -39,6 +41,7 @@ const flags = {
   grape: numberOf("--grape"),
   grapeGames: numberOf("--grape-games"),
   flat: args.includes("--flat"),
+  fragment: args.includes("--fragment"),
 };
 // フラグの値（--date 2026-06-13 等）をコマンドと誤認しないよう除外する
 const VALUE_FLAGS = ["--months", "--limit", "--date", "--model", "--games", "--bb", "--rb", "--diff", "--grape", "--grape-games"];
@@ -48,6 +51,10 @@ const command = args.find((a, i) => !a.startsWith("--") && !flagValueIdx.has(i) 
 async function main() {
   if (command === "sheet") {
     sheetStep(CONFIG, flags);
+    return;
+  }
+  if (command === "guide") {
+    guideStep(CONFIG, flags);
     return;
   }
   if (command === "judge") {
@@ -62,7 +69,7 @@ async function main() {
   if (command === "analyze" || command === "all") analyzeStep(CONFIG);
   if (command === "report" || command === "all") {
     reportStep(CONFIG, flags);
-    console.log("\nブラウザで tools/minrepo/data/report.html を開いて確認。");
+    console.log("\nまず tools/minrepo/data/guide.html（攻略シート）を開く。細かい表は report.html。");
   }
 }
 

@@ -42,6 +42,10 @@ node tools/minrepo/run.mjs
 node tools/minrepo/run.mjs report --date 2026-06-13
 ```
 
+**まず開くのは `data/guide.html`（攻略シート）。** 「次に行くなら何日か・避けるなら何日か」「狙い台」「分かってきた法則（確か / たぶん / 差は見えない）」
+「REG 回数の早見表と設定判別の電卓」「換金ギャップの計算」「現地チェックリスト」を、数字の表を読まなくても分かる言葉で 1 ページにまとめたもの。
+店のデータがまだ無くても、早見表・電卓・お金の計算だけの版が作れる（`node tools/minrepo/run.mjs guide`）。細かい根拠を見たいときに `report.html` を開く。
+
 レポート（`data/report.html`）は**単一ファイルのダッシュボード**（スマホ対応・固定ナビ・結論サマリー・
 「今後2週間の狙い日」・表のヘッダクリックでソート）。LINE や AirDrop で自分のスマホに送ればそのまま開ける。
 
@@ -49,7 +53,8 @@ node tools/minrepo/run.mjs report --date 2026-06-13
 
 | ファイル | 内容 |
 |---|---|
-| `report.html` | ブラウザで開く本体レポート（色付きテーブル） |
+| `guide.html` | 攻略シート（結論だけを言葉でまとめた 1 ページ。スマホ向け） |
+| `report.html` | 全部の表が入った本体レポート（色付きテーブル） |
 | `report.md` | 上位の発見だけのダイジェスト |
 | `days.csv` / `models.csv` / `units.csv` / `suffixes.csv` | 自分で Excel 等で分析する用の生データ |
 | `analysis.json` | 全分析結果（レポートに出ない詳細含む） |
@@ -174,7 +179,7 @@ min-repo の記事は毎日 1〜4 時頃（前日分）に投稿されるので�
 
 ```
 tools/minrepo/
-  run.mjs          エントリポイント（fetch / parse / analyze / report / sheet / judge）
+  run.mjs          エントリポイント（fetch / parse / analyze / report / guide / sheet / judge）
   config.mjs       店・仮説・マナーの設定
   lib/parse.mjs    HTML パーサ（純粋関数）
   lib/dataset.mjs  tidy データ化・CSV 出力（純粋関数）
@@ -190,12 +195,13 @@ tools/minrepo/
   lib/report-atype.mjs  上記のレポート部品と設定判別電卓
   lib/calendar.mjs 営業カレンダー分析（全台・日単位。年金/給料日/連休/入替前後/手入力タグ/回収日）
   lib/report-calendar.mjs  上記のレポート部品
+  lib/guide.mjs    攻略シート（結論を言葉でまとめた 1 ページ）
   lib/html.mjs     レポート用の整形ヘルパ
   DATA_SOURCES.md  データ源と根拠・限界
 ```
 
-テスト: `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs`
-（後ろ 3 つは既知の法則を仕込んだ合成データで、分析が法則を検出できるか・法則が無いときに「ある」と言わないかを確かめる）。
+テスト: `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs` / `node tests/minrepo-guide.test.mjs`
+（settei / calendar / guide は既知の法則を仕込んだ合成データで、分析が法則を検出できるか・法則が無いときに「ある」と言わないかを確かめる）。
 
 ## 読み方のコツ
 
