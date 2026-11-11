@@ -95,8 +95,9 @@ function columnMap(headerRow) {
     else if (t === "G数" || t.includes("G数")) map.games = i;
     else if (t.includes("勝率")) map.winRate = i;
     else if (t.includes("出率")) map.payout = i;
-    else if (t.includes("BB")) map.bb = i;
-    else if (t.includes("RB")) map.rb = i;
+    // 回数の列だけを拾う（「BB確率」「RB率」「合成」などの確率列で上書きしない。設定推定は回数を使う）
+    else if (/^(BB|BIG)(回数)?$/i.test(t)) map.bb = i;
+    else if (/^(RB|REG)(回数)?$/i.test(t)) map.rb = i;
   });
   return map;
 }

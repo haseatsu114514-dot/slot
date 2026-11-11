@@ -1,46 +1,11 @@
 // analysis.json から「サイト風」ダッシュボード HTML と Markdown ダイジェストを生成する。純粋関数のみ。
 // 出力はスマホ対応・単一ファイル（そのまま誰かに送っても開ける）。
 
-import { formatSigned, toDateParts, nthWeekdayOfMonth, addDays } from "./util.mjs";
-import { matchesEvent } from "./analyze.mjs";
+import { formatSigned, toDateParts, nthWeekdayOfMonth, addDays, matchesEvent } from "./util.mjs";
+import { esc, pct, pctPt, num, pv, heat, table, td, chip } from "./html.mjs";
+import { atypeSummaryCard, atypeSections, ATYPE_CSS, atypeScript, atypeMarkdown } from "./report-atype.mjs";
 
-const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
-
-function pct(v, digits = 1) {
-  return v == null ? "-" : `${(v * 100).toFixed(digits)}%`;
-}
-
-function pctPt(v, digits = 1) {
-  return v == null ? "-" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(digits)}pt`;
-}
-
-function num(v, digits = 0) {
-  return v == null ? "-" : Number(v).toLocaleString("ja-JP", { maximumFractionDigits: digits });
-}
-
-function pv(p) {
-  if (p == null) return "-";
-  const s = p < 0.001 ? "<0.001" : p.toFixed(3);
-  return p < 0.05 ? `<b>${s}</b>` : s;
-}
-
-/** -1..1 に正規化した値を背景色にする（負=青, 正=赤） */
-function heat(v, scale) {
-  if (v == null || !Number.isFinite(v)) return "";
-  const t = Math.max(-1, Math.min(1, v / scale));
-  const alpha = Math.abs(t) * 0.5;
-  const color = t >= 0 ? `rgba(229,57,53,${alpha})` : `rgba(30,136,229,${alpha})`;
-  return ` style="background:${color}"`;
-}
-
-function table(headers, rows, { sortable = true } = {}) {
-  const head = headers.map((h) => `<th>${h}</th>`).join("");
-  const body = rows.map((cells) => `<tr>${cells.join("")}</tr>`).join("\n");
-  return `<div class="tw"><table class="${sortable ? "sortable" : ""}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-}
-
-const td = (content, attr = "") => `<td${attr}>${content}</td>`;
 
 function dayObj(date) {
   const p = toDateParts(date);
@@ -66,10 +31,6 @@ export function upcomingDays(analysis, today, horizon = 14) {
   }
   out.sort((a, b) => b.score - a.score || (a.date < b.date ? -1 : 1));
   return out;
-}
-
-function chip(text, kind) {
-  return `<span class="chip ${kind}">${text}</span>`;
 }
 
 function verdictChip(g) {
@@ -124,6 +85,9 @@ function summarySection(a, meta) {
   items.push(
     `<div class="card"><h3>今後2週間の狙い日（${tp ? `${tp.m}/${tp.d}〜` : ""}実績ベース）</h3><ul class="plain">${upLines || "<li>該当なし</li>"}</ul><p class="note">太字 = 実績の裏付けあり（通常日比+1pt超・p&lt;0.2・サンプル5日以上）。灰色は裏付けが弱いので参考程度。</p></div>`
   );
+
+  // ジャグラー/ハナハナの設定推定
+  items.push(atypeSummaryCard(a));
 
   // 稼働（G数）
   const evG = a.eventGroups
@@ -231,6 +195,9 @@ export function renderHtml(analysis, config, meta) {
   const sections = [];
 
   sections.push(summarySection(a, meta));
+
+  const atype = atypeSections(a, config, meta);
+  for (const sec of atype) sections.push(sec.html);
 
   const gScale = Math.max(150, (a.coverage?.meanGames ?? 3000) * 0.12);
   sections.push(`<section id="days"><h2>日にち別（1〜31日）</h2>
@@ -430,12 +397,14 @@ ${table(
 <li>差枚は万枚事故などの外れ値に弱い。<b>勝率の uplift と p値</b>を主に、差枚・中央値を従に見る。</li>
 <li>G数（稼働）は客側の行動。高稼働=高設定の証明ではないが、「客に信じられている日」の傍証。高稼働なのに勝率が伸びない日は回収日の疑い。</li>
 <li>p値は並べ替え検定（${num(a.params?.iterations ?? 2000)}回）。仮説を同時にたくさん見ているので、p&lt;0.05 でも 20 回に 1 回は偶然出る。uplift の大きさ・月次の安定感・n をセットで判断。</li>
+<li>設定推定（ジャグラー/ハナハナ）は設定ごとのボーナス確率・機械割（解析サイト掲載値）にもとづく確率計算。1台1日の結果で設定は断定できない（設定1でも1日だけなら設定6のような数字は出る）。束ねた傾向と p値で判断する。</li>
 <li>データ出典: min-repo.com（独自調査値・推定）。<b>私的な分析用途のみ。このレポートや元データを転載・公開しないこと。</b></li>
 <li>データ範囲: ${esc(a.coverage.from)} 〜 ${esc(a.coverage.to)}（${a.coverage.nDays}日、台番付き ${num(a.coverage.nUnits)}件）</li>
 </ul></section>`);
 
   const nav = [
     ["summary", "結論"],
+    ...atype.map((sec) => [sec.id, sec.nav]),
     ["days", "日にち"],
     ["events", "イベント日"],
     ["models", "機種ランキング"],
@@ -497,7 +466,7 @@ tbody tr:nth-child(even) td:first-child{background:#f7f9fb}
 .bar{width:9px;min-height:2px;border-radius:2px 2px 0 0}.bar.pos{background:#e53935}.bar.neg{background:#1e88e5}.bar.na{background:#ccc}
 details{margin:.4em 0}summary{cursor:pointer;font-size:.85rem;color:#345}
 footer{margin:1em 0 3em;color:#99a;font-size:.72rem;text-align:center}
-</style></head><body>
+${ATYPE_CSS}</style></head><body>
 <header><h1>${esc(config.storeName)} 設定狙い分析</h1>
 <div class="meta">生成 ${esc(meta.generatedAt)} ／ データ ${esc(a.coverage.from)}〜${esc(a.coverage.to)}（${a.coverage.nDays}日） ／ 出典 min-repo.com（私的利用のみ）</div></header>
 <nav>${nav}</nav>
@@ -532,6 +501,7 @@ document.querySelectorAll("table.sortable").forEach(function(t){
     });
   });
 });
+${atypeScript(a, config)}
 </script>
 </body></html>`;
 }
@@ -552,6 +522,7 @@ export function renderMarkdown(analysis, config, generatedAt) {
     );
   }
   lines.push("");
+  lines.push(...atypeMarkdown(a));
   lines.push("## 機種別ランキング（サンプル100台×日以上・勝率順トップ10）");
   for (const m of (a.models || []).filter((m) => m.samples >= 100).slice(0, 10)) {
     lines.push(`- ${m.model}: 勝率 ${pct(m.winRate)}・差枚 ${formatSigned(m.meanDiff)}（サンプル ${num(m.samples)}台×日・${m.nDays}日分・直近60日勝率 ${pct(m.recent.winRate)}）`);

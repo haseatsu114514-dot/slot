@@ -11,7 +11,7 @@ Claude Code がこのリポジトリで作業する際のガイド。
 - ローカル確認: `index.html` をブラウザで直接開く（ビルド不要）
 - テスト: `node tests/kanshi-data.test.mjs` と `node tests/code-gs-parity.test.mjs`（フレームワーク無し、`node:assert` のみ）
   - `code-gs-parity` は `Code.gs` と `kanshi-data.js` のスコアリングが一致するかを vm サンドボックスで照合する。スコア計算を触ったら必ず両方実行
-  - `tools/minrepo` を触ったら `node tests/minrepo-parse.test.mjs` と `node tests/minrepo-analyze.test.mjs` も実行
+  - `tools/minrepo` を触ったら `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` も実行
 - ホスティング: GitHub Pages などに静的配信
 - Sheets 同期: `google-apps-script/Code.gs` を Apps Script 側に貼り付け Web アプリとしてデプロイ、`window.SLOT_APP_CONFIG.syncEndpoint` に URL を設定
 
@@ -26,6 +26,9 @@ Claude Code がこのリポジトリで作業する際のガイド。
 - `tests/kanshi-data.test.mjs` — コアロジックのテスト
 - `tests/code-gs-parity.test.mjs` — Code.gs と kanshi-data.js のパリティテスト
 - `tools/minrepo/` — タイホウ亀島店の min-repo データ取得・分析ツール（カレンダー本体とは独立、詳細は `tools/minrepo/README.md`）。取得データ `tools/minrepo/data/` は gitignore 済みでコミットしない
+  - ジャグラー/ハナハナの設定推定（`lib/specs.mjs` スペック表 → `lib/settei.mjs` 尤度・EM → `lib/atype.mjs` 仮説検証・狙い台）を含む。データ源と根拠は `tools/minrepo/DATA_SOURCES.md`
+  - `lib/specs.mjs` の数値は解析サイト掲載値（2 サイト以上で突き合わせ済み）。変更・追加するときは確認元 URL を `sources` に書く（`validateSpecs` がテストで整合性を見る）
+  - 手入力データ（公式台データの写し・示唆景品メモ・入替日）は `tools/minrepo/data/manual/*.csv`。店の公式台データをプログラムで取得するコードは足さない（規約上の理由。DATA_SOURCES.md 参照）
 
 ## 表示範囲
 

@@ -5,6 +5,9 @@
 
 分析できるもの:
 
+- **ジャグラー / ハナハナの設定推定** — 設定ごとのボーナス確率・機械割（解析サイト掲載値）と、台ごとの 総G・BIG・REG（無ければ差枚）を
+  突き合わせて設定1〜6 の確率を計算（ベイズ推定）。店全体・機種別の設定配分、凹み台/据え置き/入替日/示唆景品/台番・末尾・並びの検証、
+  翌日の狙い台ランキングとその過去検証、実戦用の設定判別電卓まで（→ 下の「ジャグラー / ハナハナの設定狙い」）
 - **イベント日仮説の検証** — 3のつく日 / 4のつく日 / 7のつく日 / 第1土曜日 などの勝率・差枚の uplift と p値（並べ替え検定）、
   月次トレンドと「直近6か月でまだ機能しているか」の判定（→ *4の日を今もやってるか* が分かる）
 - **日にち別（1〜31日）・曜日別**のヒートマップ
@@ -62,11 +65,59 @@ node tools/minrepo/run.mjs report --date 2026-06-13
 
 min-repo の記事は毎日 1〜4 時頃（前日分）に投稿されるので、朝に回すのがよい。
 
+## ジャグラー / ハナハナの設定狙い
+
+データをどこから取るか・なぜそれで設定が分かると言えるのか・限界は [DATA_SOURCES.md](DATA_SOURCES.md) にまとめてある。要点だけ:
+
+- みんレポの台番別データ（差枚・G数）が取れていれば、何もしなくても推定が始まる。
+- **BIG・REG 回数が入ると精度が大きく上がる。** 店の公式台データは規約上プログラムで取らないので、見て書き写す:
+
+  ```sh
+  # data/manual/ に counts.csv / observations.csv / calendar.csv を用意し、その日の全台ぶんの記入行を足す
+  node tools/minrepo/run.mjs sheet --date 2026-11-10
+  # → counts.csv の games / bb / rb（分かれば diff）を埋めたら再計算
+  node tools/minrepo/run.mjs parse && node tools/minrepo/run.mjs analyze && node tools/minrepo/run.mjs report
+  ```
+
+- 現地で見たものは `data/manual/` の CSV に足す（Excel で開いて保存してよい。`#` で始まる行は無視される）:
+
+  | ファイル | 列 | 例 |
+  |---|---|---|
+  | `counts.csv` | `date,unit,model,games,bb,rb,diff,grape,grapeGames,note` | `2026-11-10,512,マイジャグラーV,6480,28,31,+1850,,,` |
+  | `observations.csv` | `date,unit,tag,note` | `2026-11-10,512,示唆景品,台上にお菓子` |
+  | `calendar.csv` | `date,kind,note` | `2026-11-17,入替,新台入替 9時開店` |
+
+  `tag` は自由に決めてよい（`示唆景品` `札` `ガックン` など）。同じタグの台が「同じ日の他の台より出たか」をタグごとに検証する。
+  `unit` は `501-508`（範囲）や `512/515`（複数）とも書ける。台ではなく**日単位**の示唆（例: カウンターに特定の景品が並んだ日）は
+  `calendar.csv` に `2026-11-10,示唆景品あり,` のように書くと、その種類の日が他の日より強いかを検証する。
+  `kind` に `入替` か `新台` を含む日は入替日として扱い、それ以外（`取材` `店休明け` など）は種類ごとに別枠で検証する。
+
+- その場で 1 台だけ判別したいとき（レポート内の「設定判別」でも同じことができる）:
+
+  ```sh
+  node tools/minrepo/run.mjs judge --model マイジャグラーV --games 3200 --bb 13 --rb 14
+  node tools/minrepo/run.mjs judge --model キングハナハナ --games 5000 --bb 20 --rb 15
+  node tools/minrepo/run.mjs judge --model マイジャグラーV --games 6000 --diff 1800   # 差枚しか分からないとき
+  ```
+
+  ぶどう/ベルの確率は、設定差が小さく掲載値もサイトによって揺れるので現状は収録していない
+  （`lib/specs.mjs` の `grape` に設定1〜6 の値を入れると、`--grape 回数 --grape-games 数えたG数` とレポートの入力欄が有効になる）。
+
+  既定では「この店の推定設定配分」を前提にする（低設定が多い店では、少し良い数字が出ても低設定の上振れと見る）。
+  一般的な判別ツールと同じ前提にしたいときは `--flat`。
+
+- レポートの見方: 「狙い台」は必ず同じセクションの**検証結果（裏付けあり / 弱い裏付け / 裏付けなし）**とセットで読む。
+  「裏付けなし」の間は、台選びより行く日選び（イベント日の検証）を優先する。
+- 対象機種とスペック表は `lib/specs.mjs`。新機種が入るとレポートに「スペック未登録」の警告が出るので 1 件足す。
+  区切りや「高設定」の定義（既定は設定4以上）は `config.mjs` の `atype`。
+
 ## 重要な注意
 
 - **自宅回線で実行すること。** min-repo はデータセンター系 IP からのアクセスに *ダミー値*（差枚 0/±1・出率 100% 張り付き）を
   返すことがある。本ツールはこれを検知すると即中断する（ゴミデータ蓄積防止）。中断メッセージが出たら環境を変えること。
 - **マナー**: リクエスト間隔は既定 2 秒 + ジッタ。短くしないこと。バックフィルは `--limit` で数日に分けると行儀がよい。
+- **店の公式台データ（台データオンライン系）はプログラムで取得しない。** 規約がデータベースの複製と第三者への提供を禁じている。
+  見て `counts.csv` に写すのは自分用のメモの範囲に留め、公開・共有しないこと。
 - **私的利用の範囲で。** データは min-repo の独自調査値（推定値）であり、レポートや CSV を再配布・転載しないこと。
   このリポジトリを GitHub Pages 等で公開している場合も `tools/minrepo/data/` は公開に含めない（.gitignore 済み）。
 - 機種別詳細（`?kishu=`）はリクエスト数が増える。既定はウォッチリスト該当機種のみ・毎日取得
@@ -89,7 +140,7 @@ min-repo の記事は毎日 1〜4 時頃（前日分）に投稿されるので�
 
 ```
 tools/minrepo/
-  run.mjs          エントリポイント（fetch / parse / analyze / report）
+  run.mjs          エントリポイント（fetch / parse / analyze / report / sheet / judge）
   config.mjs       店・仮説・マナーの設定
   lib/parse.mjs    HTML パーサ（純粋関数）
   lib/dataset.mjs  tidy データ化・CSV 出力（純粋関数）
@@ -98,10 +149,17 @@ tools/minrepo/
   lib/wp.mjs       記事一覧の列挙
   lib/http.mjs     行儀のよい fetch
   lib/util.mjs     数値・日付・統計
+  lib/specs.mjs    ジャグラー/ハナハナの設定別スペック表（確認元つき）と機種名の照合
+  lib/settei.mjs   設定推定の計算（尤度・事後確率・設定配分の EM 推定）
+  lib/atype.mjs    ジャグラー/ハナハナの仮説検証・狙い台ランキング・ウォークフォワード検証
+  lib/manual.mjs   手入力 CSV（counts / observations / calendar）の読み込みと統合
+  lib/report-atype.mjs  上記のレポート部品と設定判別電卓
+  lib/html.mjs     レポート用の整形ヘルパ
+  DATA_SOURCES.md  データ源と根拠・限界
 ```
 
-テスト: `node tests/minrepo-parse.test.mjs` と `node tests/minrepo-analyze.test.mjs`
-（後者は既知の法則を仕込んだ合成データで、分析が法則を検出できるかを確かめる）。
+テスト: `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs`
+（後ろ 2 つは既知の法則を仕込んだ合成データで、分析が法則を検出できるか・法則が無いときに「ある」と言わないかを確かめる）。
 
 ## 読み方のコツ
 

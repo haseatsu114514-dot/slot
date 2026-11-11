@@ -1,6 +1,6 @@
 // fetch → parse → analyze → report の各ステップ（ファイルIOあり）。
 
-import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { politeFetchText } from "./http.mjs";
@@ -9,11 +9,16 @@ import { parseReportPage, parseUnitTable, detectMasked } from "./parse.mjs";
 import { buildDataset, toCsv } from "./dataset.mjs";
 import { analyze } from "./analyze.mjs";
 import { renderHtml, renderMarkdown } from "./report.mjs";
+import { MANUAL_FILES, parseCounts, parseObservations, parseCalendar, mergeCounts, templateCsv, buildCountsSheet } from "./manual.mjs";
+import { matchSpec, ATYPE_SPECS } from "./specs.mjs";
+import { atypeConfig } from "./atype.mjs";
+import { unitLogLik, posterior, probAtLeast, expectedPayout, normalize, uniformPrior } from "./settei.mjs";
 
 const TOOL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const DATA_DIR = join(TOOL_DIR, "data");
 const RAW_DIR = join(DATA_DIR, "raw");
 const KISHU_DIR = join(DATA_DIR, "raw", "kishu");
+export const MANUAL_DIR = join(DATA_DIR, "manual");
 
 function ensureDirs() {
   for (const d of [DATA_DIR, RAW_DIR, KISHU_DIR]) mkdirSync(d, { recursive: true });
@@ -25,6 +30,22 @@ function readJson(path, fallback) {
   } catch {
     return fallback;
   }
+}
+
+/** 手入力 CSV（data/manual/*.csv）を読む。無ければ空。読めない行は警告だけ出して続行する。 */
+function readManual(log = console.log) {
+  const read = (kind, parser) => {
+    const path = join(MANUAL_DIR, MANUAL_FILES[kind].name);
+    if (!existsSync(path)) return [];
+    const { rows, errors } = parser(readFileSync(path, "utf8"));
+    for (const e of errors) log(`  注意: ${e}`);
+    return rows;
+  };
+  return {
+    counts: read("counts", parseCounts),
+    observations: read("observations", parseObservations),
+    calendar: read("calendar", parseCalendar),
+  };
 }
 
 function todayStr() {
@@ -179,10 +200,17 @@ export function parseStep(config, log = console.log) {
     }
   }
   const dataset = buildDataset(records);
+  // 手入力データ（公式台データの写し・現地メモ・入替日）を統合する
+  const manual = readManual(log);
+  dataset.units = mergeCounts(dataset.units, manual.counts);
+  dataset.manual = { observations: manual.observations, calendar: manual.calendar };
+  if (manual.counts.length || manual.observations.length || manual.calendar.length) {
+    log(`手入力データを統合: counts ${manual.counts.length}行 / observations ${manual.observations.length}行 / calendar ${manual.calendar.length}行`);
+  }
   writeFileSync(join(DATA_DIR, "dataset.json"), JSON.stringify(dataset));
   writeFileSync(join(DATA_DIR, "days.csv"), toCsv(dataset.days, ["date", "y", "m", "d", "weekday", "nthWeekday", "status", "avgGames", "win", "total", "winRate", "avgDiff", "masked"]));
   writeFileSync(join(DATA_DIR, "models.csv"), toCsv(dataset.models, ["date", "model", "count", "avgDiff", "avgGames", "win", "total", "payout"]));
-  writeFileSync(join(DATA_DIR, "units.csv"), toCsv(dataset.units, ["date", "model", "unit", "suffix", "diff", "games", "payout", "bb", "rb"]));
+  writeFileSync(join(DATA_DIR, "units.csv"), toCsv(dataset.units, ["date", "model", "unit", "suffix", "diff", "games", "payout", "bb", "rb", "src"]));
   writeFileSync(join(DATA_DIR, "suffixes.csv"), toCsv(dataset.suffixes, ["date", "suffix", "avgDiff", "avgGames", "win", "total", "winRate", "payout"]));
   log(`パース完了: ${dataset.days.length}日 / models ${dataset.models.length}行 / units ${dataset.units.length}行（マスク日 ${maskedCount}）→ data/*.csv, dataset.json`);
   return dataset;
@@ -209,6 +237,76 @@ export function reportStep(config, opts = {}, log = console.log) {
   writeFileSync(join(DATA_DIR, "report.html"), renderHtml(analysis, config, meta));
   writeFileSync(join(DATA_DIR, "report.md"), renderMarkdown(analysis, config, meta.generatedAt));
   log(`レポート生成（狙い日基準 ${meta.today}）→ data/report.html, data/report.md`);
+}
+
+/**
+ * 手入力用の CSV を用意する。
+ *  - data/manual/ に counts.csv / observations.csv / calendar.csv が無ければテンプレを作る
+ *  - counts.csv に、指定日（既定: 今日）のジャグラー/ハナハナ全台ぶんの空行を足す（公式台データを見ながら埋める）
+ * 台番の一覧は直近の dataset から取る。dataset が無ければテンプレだけ作る。
+ */
+export function sheetStep(config, opts = {}, log = console.log) {
+  ensureDirs();
+  mkdirSync(MANUAL_DIR, { recursive: true });
+  for (const kind of Object.keys(MANUAL_FILES)) {
+    const path = join(MANUAL_DIR, MANUAL_FILES[kind].name);
+    if (!existsSync(path)) {
+      writeFileSync(path, templateCsv(kind));
+      log(`作成: ${path}`);
+    }
+  }
+  if (opts.date && !/^\d{4}-\d{2}-\d{2}$/.test(opts.date)) throw new Error("--date は YYYY-MM-DD 形式で指定すること。");
+  const date = opts.date || todayStr();
+  const dataset = readJson(join(DATA_DIR, "dataset.json"), null);
+  const cfg = atypeConfig(config);
+  const re = new RegExp(cfg.seriesPattern, "i");
+  let targets = [];
+  if (dataset && dataset.units && dataset.units.length) {
+    const aUnits = dataset.units.filter((u) => u.model && re.test(u.model));
+    const last = aUnits.map((u) => u.date).sort().at(-1);
+    targets = aUnits.filter((u) => u.date === last).map((u) => ({ unit: u.unit, model: u.model }));
+  }
+  const countsPath = join(MANUAL_DIR, MANUAL_FILES.counts.name);
+  if (!targets.length) {
+    log(`台番の一覧がまだ無い（先に取得・parse するか、${countsPath} に手で行を足す）。テンプレだけ用意した。`);
+    return { date, added: 0 };
+  }
+  const existing = readFileSync(countsPath, "utf8");
+  const add = buildCountsSheet(date, targets, existing);
+  const added = add ? add.trim().split("\n").length : 0;
+  if (add) appendFileSync(countsPath, (existing.endsWith("\n") || existing === "" ? "" : "\n") + add);
+  log(`${date} の記入行を ${added} 台ぶん追加 → ${countsPath}`);
+  log(`公式台データを見ながら games / bb / rb（分かれば diff）を埋めて、node tools/minrepo/run.mjs parse 以降を再実行。`);
+  return { date, added };
+}
+
+/**
+ * コマンドラインの設定判別。opts: { model, games, bb, rb, diff, grape, grapeGames, flat }
+ * 店の推定配分（analysis.json）があればそれを事前分布に使う。
+ */
+export function judgeStep(config, opts = {}, log = console.log) {
+  const spec = opts.model ? matchSpec(opts.model) || ATYPE_SPECS.find((s) => s.name.includes(opts.model) || s.id === opts.model) : null;
+  if (!spec) {
+    log(`機種が分からない。--model に次のどれかを指定: ${ATYPE_SPECS.map((s) => s.name).join(" / ")}`);
+    return null;
+  }
+  const cfg = atypeConfig(config);
+  const obs = { games: opts.games, bb: opts.bb ?? null, rb: opts.rb ?? null, diff: opts.diff ?? null, grape: opts.grape ?? null, grapeGames: opts.grapeGames ?? null };
+  if (obs.grape != null && !spec.grape) log(`（${spec.name} は${spec.grapeLabel}確率が未収録のため、--grape は使わずに計算する）`);
+  const r = unitLogLik(obs, spec, cfg);
+  if (!r) {
+    log("計算できない。--games と（--bb --rb）または --diff を指定すること。");
+    return null;
+  }
+  const analysis = readJson(join(DATA_DIR, "analysis.json"), null);
+  const t = analysis && analysis.atype && analysis.atype.available ? analysis.atype : null;
+  const modelPi = t ? (t.byModel.find((m) => m.specId === spec.id && m.pi && m.n >= 100) || {}).pi : null;
+  const prior = opts.flat ? uniformPrior() : modelPi || (t ? t.mix.pi : normalize(cfg.prior));
+  const post = posterior(r.ll, prior);
+  log(`${spec.name}  ${obs.games}G${obs.bb != null ? ` BIG${obs.bb} REG${obs.rb}` : ""}${obs.diff != null ? ` 差枚${obs.diff}` : ""}（根拠: ${r.basis === "counts" ? "BIG/REG回数" : "差枚"}・前提: ${opts.flat ? "全設定同確率" : t ? "この店の推定配分" : "既定の配分"}）`);
+  post.forEach((p, s) => log(`  設定${s + 1} ${(p * 100).toFixed(1).padStart(5)}% ${"#".repeat(Math.round(p * 40))}`));
+  log(`  設定${cfg.highFrom}以上 ${(probAtLeast(post, cfg.highFrom) * 100).toFixed(1)}% ／ 期待機械割 ${expectedPayout(post, spec).toFixed(1)}%`);
+  return { spec, post };
 }
 
 export { todayStr };

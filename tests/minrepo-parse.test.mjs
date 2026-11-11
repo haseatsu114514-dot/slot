@@ -113,6 +113,18 @@ assert.equal(kishuRows[0].diff, 2345);
 assert.equal(kishuRows[0].bb, 30);
 assert.equal(kishuRows[1].rb, 5);
 
+// 確率の列（BB確率・RB確率・合成）があっても、回数の列を取り違えない
+const KISHU_PROB_PAGE = `
+<table><tbody>
+<tr><th>台番</th><th>差枚</th><th>G数</th><th>BB</th><th>RB</th><th>合成</th><th>BB確率</th><th>RB確率</th><th>出率</th></tr>
+<tr><td>1001</td><td>+2,345</td><td>7,890</td><td>30</td><td>25</td><td>1/143.5</td><td>1/263.0</td><td>1/315.6</td><td>110%</td></tr>
+</tbody></table>`;
+const probRows = parseUnitTable(KISHU_PROB_PAGE);
+assert.equal(probRows[0].bb, 30);
+assert.equal(probRows[0].rb, 25);
+assert.equal(probRows[0].games, 7890);
+assert.equal(probRows[0].payout, 110);
+
 const NUM_PAGE = `
 <table><tbody>
 <tr><th>日付</th><th>差枚</th><th>G数</th><th>出率</th></tr>

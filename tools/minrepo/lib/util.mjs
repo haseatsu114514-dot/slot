@@ -92,6 +92,34 @@ export function dayContainsDigit(day, digit) {
   return String(day).includes(String(digit));
 }
 
+/**
+ * イベント日定義をその日が満たすか。
+ * day: { m, d, weekday, nthWeekday }（dayInfo や dataset.days の要素）
+ */
+export function matchesEvent(day, def) {
+  switch (def.type) {
+    case "digitContains":
+      return dayContainsDigit(day.d, def.digit);
+    case "nthWeekday":
+      return day.weekday === def.weekday && day.nthWeekday === def.nth;
+    case "weekday":
+      return day.weekday === def.weekday;
+    case "daysOfMonth":
+      return def.days.includes(day.d);
+    case "monthDay":
+      return day.m === def.month && day.d === def.day;
+    default:
+      return false;
+  }
+}
+
+/** "YYYY-MM-DD" → { date, y, m, d, weekday, nthWeekday }（matchesEvent に渡せる形） */
+export function dayInfo(dateStr) {
+  const p = toDateParts(dateStr);
+  if (!p) return null;
+  return { date: dateStr, ...p, nthWeekday: Math.ceil(p.d / 7) };
+}
+
 export function isLastDayOfMonth(dateStr) {
   const p = toDateParts(dateStr);
   if (!p) return false;

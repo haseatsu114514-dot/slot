@@ -4,25 +4,10 @@
 // 差枚は外れ値（万枚事故等）に引っ張られるので、判断は勝率・中央値も併せて見ること。
 // G数は客側の行動。高稼働=高設定の証明ではないが、イベント日が客に信じられているかの傍証になる。
 
-import { mean, median, mulberry32, permutationPValue, signFlipPValue, dayContainsDigit, addDays } from "./util.mjs";
+import { mean, median, mulberry32, permutationPValue, signFlipPValue, addDays, matchesEvent } from "./util.mjs";
+import { analyzeAType } from "./atype.mjs";
 
-/** イベント日定義をその日が満たすか */
-export function matchesEvent(day, def) {
-  switch (def.type) {
-    case "digitContains":
-      return dayContainsDigit(day.d, def.digit);
-    case "nthWeekday":
-      return day.weekday === def.weekday && day.nthWeekday === def.nth;
-    case "weekday":
-      return day.weekday === def.weekday;
-    case "daysOfMonth":
-      return def.days.includes(day.d);
-    case "monthDay":
-      return day.m === def.month && day.d === def.day;
-    default:
-      return false;
-  }
-}
+export { matchesEvent };
 
 function compareGroups(eventRows, restRows, pick, iterations, rng) {
   const ev = eventRows.map(pick).filter((v) => v != null && Number.isFinite(v));
@@ -578,6 +563,7 @@ export function analyze(dataset, config, opts = {}) {
   const seriesDaysMap = buildSeriesDays(dataset, config.seriesWatchlist || []);
 
   const diffDays = days.filter((d) => d.avgDiff != null);
+  const lineup = analyzeLineup(dataset);
   return {
     params: { iterations, seed },
     coverage: {
@@ -598,7 +584,9 @@ export function analyze(dataset, config, opts = {}) {
     suffix: analyzeSuffix(dataset, eventDefs, iterations, rng),
     series: analyzeSeries(seriesDaysMap, eventDefs, iterations, rng),
     hole: analyzeHole(dataset, eventDefs, config.hole, iterations, rng),
-    lineup: analyzeLineup(dataset),
+    lineup,
     anniversaries: analyzeAnniversaries(dataset, seriesDaysMap, config.anniversaries),
+    // ジャグラー/ハナハナの設定推定（専用の乱数系列を使うので、上の p値には影響しない）
+    atype: analyzeAType(dataset, config, { lineupEvents: lineup.events, seed: (opts.seed ?? 20260612) + 7 }),
   };
 }
