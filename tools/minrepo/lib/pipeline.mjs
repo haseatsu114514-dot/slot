@@ -17,7 +17,8 @@ import { atypeConfig } from "./atype.mjs";
 import { unitLogLik, posterior, probAtLeast, expectedPayout, normalize, uniformPrior } from "./settei.mjs";
 
 const TOOL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
-export const DATA_DIR = join(TOOL_DIR, "data");
+// データの置き場所。テストでは MINREPO_DATA_DIR で一時フォルダに差し替える
+export const DATA_DIR = process.env.MINREPO_DATA_DIR ? resolve(process.env.MINREPO_DATA_DIR) : join(TOOL_DIR, "data");
 const RAW_DIR = join(DATA_DIR, "raw");
 const KISHU_DIR = join(DATA_DIR, "raw", "kishu");
 export const MANUAL_DIR = join(DATA_DIR, "manual");
@@ -133,6 +134,7 @@ export async function fetchStep(config, opts = {}, log = console.log) {
   log(`未取得のレポート: ${targets.length}件 → 今回取得 ${plan.length}件（日別ページだけで約 ${Math.max(1, Math.round((plan.length * perRequestSec) / 60))}分。${detailNote}）`);
 
   let fetched = 0;
+  let emptyStreak = 0;
   for (const post of plan) {
     log(`[${post.dataDate}] ${post.link}`);
     const r = await politeFetchText(post.link, config);
@@ -145,42 +147,108 @@ export async function fetchStep(config, opts = {}, log = console.log) {
       console.error(MASKED_MESSAGE);
       return { fetched, aborted: "masked" };
     }
-    writeFileSync(join(RAW_DIR, `${post.dataDate}.html`), r.text);
-    fetched++;
     if (!report.models.length && !report.units.length) {
+      // 中身の無い応答が続くのは、ブロックされているとき。空ページを溜め込まないよう早めに止める
+      emptyStreak++;
+      if (emptyStreak >= 3) {
+        console.error(EMPTY_MESSAGE);
+        return { fetched, aborted: "empty" };
+      }
+      if (!r.text || !r.text.trim()) {
+        log(`  空の応答。保存しない（次回また取りに行く）`);
+        continue;
+      }
+      writeFileSync(join(RAW_DIR, `${post.dataDate}.html`), r.text);
+      fetched++;
       log(`  注意: テーブルが見つからない（古いレイアウト？）。保存だけした。`);
       continue;
     }
+    emptyStreak = 0;
 
-    // 機種別詳細（台番ごとの差枚）。watchlist 該当機種のみ等、config に従う。
+    // 機種別詳細（台番ごとの差枚）。config に従う。
+    // 日別ページ（raw/YYYY-MM-DD.html）は機種別ページを取り終えてから書く。途中で止めても、次回その日をやり直せる
     const kd = config.kishuDetail || { mode: "none" };
-    if (!opts.noKishu && kd.mode !== "none") {
-      if (kd.days === "event" && !isEventOrWeekendDate(post.dataDate, config)) continue;
+    const wantKishu = !opts.noKishu && kd.mode !== "none" && !(kd.days === "event" && !isEventOrWeekendDate(post.dataDate, config));
+    if (wantKishu) {
       // kishuDetail.pattern があれば、その機種だけ台番別ページを取る（アクセス数を必要最小限にするため）
       const patterns = kd.pattern ? [new RegExp(kd.pattern, "i")] : (config.seriesWatchlist || []).map((s) => new RegExp(s.pattern, "i"));
       const models = report.models
         .filter((m) => m.model && (m.count == null || m.count >= 2)) // 1台機種はバラエティ表で台番が取れている
         .filter((m) => kd.mode === "all" || patterns.some((re) => re.test(m.model)));
-      if (!models.length) continue;
-      const dayDir = join(KISHU_DIR, post.dataDate);
-      mkdirSync(dayDir, { recursive: true });
-      const metaPath = join(dayDir, "_index.json");
-      const meta = readJson(metaPath, {});
-      for (const m of models) {
-        const file = `${b64(m.model)}.html`;
-        if (existsSync(join(dayDir, file))) continue;
-        const url = `${post.link.replace(/\/?$/, "/")}?kishu=${encodeURIComponent(m.model)}`;
-        const kr = await politeFetchText(url, config);
-        if (!kr.ok) continue;
-        writeFileSync(join(dayDir, file), kr.text);
-        meta[file] = m.model;
+      if (models.length) {
+        const dayDir = join(KISHU_DIR, post.dataDate);
+        mkdirSync(dayDir, { recursive: true });
+        const metaPath = join(dayDir, "_index.json");
+        const meta = readJson(metaPath, {});
+        let got = 0;
+        for (const m of models) {
+          const file = `${b64(m.model)}.html`;
+          if (existsSync(join(dayDir, file))) {
+            got++;
+            continue;
+          }
+          const url = `${post.link.replace(/\/?$/, "/")}?kishu=${encodeURIComponent(m.model)}`;
+          const kr = await politeFetchText(url, config);
+          if (!kr.ok || !kr.text || !kr.text.trim()) continue;
+          writeFileSync(join(dayDir, file), kr.text);
+          meta[file] = m.model;
+          writeFileSync(metaPath, JSON.stringify(meta, null, 1));
+          got++;
+        }
+        log(`  機種別詳細 ${got}/${models.length}機種（${models.map((m) => m.model).join("、")}）`);
       }
-      writeFileSync(metaPath, JSON.stringify(meta, null, 1));
-      log(`  機種別詳細 ${models.length}機種`);
     }
+    writeFileSync(join(RAW_DIR, `${post.dataDate}.html`), r.text);
+    fetched++;
   }
   log(`取得完了: レポート ${fetched}件`);
   return { fetched, aborted: null };
+}
+
+/**
+ * 取得できる環境かどうかの事前チェック。サイトへのアクセスは 2 回だけ（記事一覧 1 回 + 最新の日別ページ 1 回）。
+ * 戻り値: { ok, reason: null | "network" | "empty" | "masked", newest, models, aType }
+ */
+export async function checkStep(config, log = console.log) {
+  const since = monthsBefore(todayStr(), 1);
+  log("1/2 記事一覧を確認…");
+  let posts;
+  try {
+    posts = await listStorePosts({ ...config, retries: config.retries ?? 1 }, since, () => {});
+  } catch (err) {
+    log(`  通信エラー: ${err.message}`);
+    log("  → このマシンからみんレポに届いていない。ネットワークの設定を確認すること。");
+    return { ok: false, reason: "network" };
+  }
+  if (!posts.length) {
+    console.error(EMPTY_MESSAGE);
+    return { ok: false, reason: "empty" };
+  }
+  const newest = posts[0];
+  log(`  OK: 直近 1 か月の記事 ${posts.length}件（最新 ${newest.dataDate}）`);
+  log("2/2 最新の日別ページを確認…");
+  let page;
+  try {
+    page = await politeFetchText(newest.link, { ...config, retries: config.retries ?? 1 });
+  } catch (err) {
+    log(`  通信エラー: ${err.message}`);
+    return { ok: false, reason: "network" };
+  }
+  const report = page.ok && page.text ? parseReportPage(page.text) : { models: [], units: [] };
+  if (detectMasked(report)) {
+    console.error(MASKED_MESSAGE);
+    return { ok: false, reason: "masked", newest: newest.dataDate };
+  }
+  if (!report.models.length) {
+    console.error(EMPTY_MESSAGE);
+    return { ok: false, reason: "empty", newest: newest.dataDate };
+  }
+  const re = new RegExp((config.kishuDetail && config.kishuDetail.pattern) || "ジャグラー|ハナハナ", "i");
+  const aType = report.models.filter((m) => re.test(m.model || ""));
+  log(`  OK: ${newest.dataDate} の機種 ${report.models.length}種類。うち台番別も取る機種 ${aType.length}種類`);
+  if (aType.length) log(`      ${aType.map((m) => `${m.model}（${m.count ?? "?"}台）`).join("、")}`);
+  log("\n取得できる。次は: node tools/minrepo/run.mjs once");
+  return { ok: true, reason: null, newest: newest.dataDate, models: report.models.length, aType: aType.map((m) => m.model) };
 }
 
 /**

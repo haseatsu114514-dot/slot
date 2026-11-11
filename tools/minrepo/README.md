@@ -32,17 +32,23 @@
 
 ### 1. データを集める
 
-**おすすめ: 自宅の PC で一度だけまとめて取得する。**
+**おすすめ: 一度だけまとめて取得する。**
 
 ```sh
-node tools/minrepo/run.mjs once
+node tools/minrepo/run.mjs check   # 取れる環境かを確かめる（サイトへのアクセスは 2 回だけ）
+node tools/minrepo/run.mjs once    # 取れると分かったら、まとめて取得 → 分析 → 攻略シート
 ```
+
+- `check` が「応答が空」「ダミー値」で終わったら、その環境からは取れない。回避は試さず、別の回線で実行するか、下の手で集める方法にする。
 
 - 取るもの: 過去 6 か月ぶんの日別ページ（約 180 枚）と、ジャグラー/ハナハナの台番別ページ（1 日あたり機種数ぶん）。それ以外は取らない。
 - アクセス間隔は約 2.4 秒。日別だけで約 7 分、台番別を含めて 1 時間前後。途中で止めても同じコマンドで続きから（取得済みは取り直さない）。
 - 終わるとそのまま分析して `data/guide.html`（攻略シート）を作る。**以後は取得しなくてよい。**
   数週間たって最新の状況に更新したくなったら、同じコマンドで増えた日のぶんだけ取る。
-- 自宅の回線で実行すること。クラウドのサーバーや VPN 経由だと、みんレポは中身の無い応答を返す（その場合はメッセージを出して止まる）。
+- 自宅の回線で実行するのが確実。クラウドのサーバーや VPN 経由だと、みんレポは中身の無い応答を返すことがある
+  （その場合は日別ページ 3 枚以内でメッセージを出して止まり、空のページは保存しない）。
+  AI エージェントのクラウド環境（Meta Muse など）で試す場合も、必ず先に `check` を実行する。
+- 途中で止まっても、同じコマンドで続きから取る。日別ページは、その日の機種別ページを取り終えてから保存するので、取りこぼしが出ない。
 - 台番別ページを取らずに日別だけで済ませるなら `--no-kishu`（「出す日・回収する日」だけ分かる。約 7 分）。
   スマスロなど他機種の台番別も欲しいときは `config.mjs` の `kishuDetail.pattern` を広げる（アクセス数が増える）。
 - みんレポの robots.txt は一般の取得を禁じていない（2026-11-12 確認）。利用規約のページは確認できていないので、
@@ -208,7 +214,7 @@ node tools/minrepo/run.mjs report --date 2026-11-13
 
 ```
 tools/minrepo/
-  run.mjs          エントリポイント（once / import / parse / analyze / report / guide / sheet / judge / fetch）
+  run.mjs          エントリポイント（check / once / import / parse / analyze / report / guide / sheet / judge / fetch）
   config.mjs       店・仮説・マナーの設定
   lib/parse.mjs    HTML パーサ（純粋関数）
   lib/dataset.mjs  tidy データ化・CSV 出力（純粋関数）
@@ -230,7 +236,7 @@ tools/minrepo/
   DATA_SOURCES.md  データ源と根拠・限界
 ```
 
-テスト: `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs` / `node tests/minrepo-guide.test.mjs` / `node tests/minrepo-import.test.mjs`
+テスト: `node tests/minrepo-parse.test.mjs` / `node tests/minrepo-analyze.test.mjs` / `node tests/minrepo-settei.test.mjs` / `node tests/minrepo-calendar.test.mjs` / `node tests/minrepo-guide.test.mjs` / `node tests/minrepo-import.test.mjs` / `node tests/minrepo-fetch.test.mjs`
 （settei / calendar / guide は既知の法則を仕込んだ合成データで、分析が法則を検出できるか・法則が無いときに「ある」と言わないかを確かめる）。
 
 ## 読み方のコツ

@@ -2,6 +2,7 @@
 // タイホウ亀島店 設定狙い分析ツール — エントリポイント
 //
 // 使い方:
+//   node tools/minrepo/run.mjs check            # 取得できる環境かを確かめる（サイトへのアクセスは 2 回だけ）
 //   node tools/minrepo/run.mjs once             # 一度だけ: 過去半年ぶんをまとめて取得 → 分析 → 攻略シート（途中で止めても続きから）
 //   node tools/minrepo/run.mjs                  # サイトにはアクセスせず、手元のデータで作り直す（inbox の取り込み → 分析 → 攻略シート）
 //   node tools/minrepo/run.mjs import [--from フォルダ]   # 手で保存したページを取り込み、集め残しの日を表示
@@ -22,8 +23,13 @@
 
 //   node tools/minrepo/run.mjs guide [--date 2026-11-12]   # 攻略シート（data/guide.html）だけ作り直す。データが無くても作れる
 
-import { fetchStep, importStep, parseStep, analyzeStep, reportStep, sheetStep, judgeStep, guideStep } from "./lib/pipeline.mjs";
+import { fetchStep, checkStep, importStep, parseStep, analyzeStep, reportStep, sheetStep, judgeStep, guideStep } from "./lib/pipeline.mjs";
 import { CONFIG } from "./config.mjs";
+
+if (typeof globalThis.fetch !== "function") {
+  console.error(`Node.js ${process.versions.node} では動かない。Node.js 18 以上を入れること。`);
+  process.exit(1);
+}
 
 const args = process.argv.slice(2);
 const valueOf = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
@@ -69,6 +75,10 @@ if (command === "once") {
 }
 
 async function main() {
+  if (command === "check") {
+    const r = await checkStep(CONFIG);
+    process.exit(r.ok ? 0 : 2);
+  }
   if (command === "sheet") {
     sheetStep(CONFIG, flags);
     return;
