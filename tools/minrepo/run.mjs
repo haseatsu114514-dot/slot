@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // タイホウ亀島店 設定狙い分析ツール — エントリポイント
 //
-// 使い方（手動が既定。サイトへの自動アクセスはしない）:
-//   node tools/minrepo/run.mjs                  # inbox の取り込み → パース → 分析 → 攻略シート/レポート
+// 使い方:
+//   node tools/minrepo/run.mjs once             # 一度だけ: 過去半年ぶんをまとめて取得 → 分析 → 攻略シート（途中で止めても続きから）
+//   node tools/minrepo/run.mjs                  # サイトにはアクセスせず、手元のデータで作り直す（inbox の取り込み → 分析 → 攻略シート）
 //   node tools/minrepo/run.mjs import [--from フォルダ]   # 手で保存したページを取り込み、集め残しの日を表示
 //
-// 自動取得（config.mjs の autoFetch: true、または明示的に指定したときだけ動く）:
+// 取得まわり（明示的に指定したときだけサイトにアクセスする。毎回取りに行かせるには config.mjs の autoFetch: true）:
 //   node tools/minrepo/run.mjs fetch            # 新しい日だけ取得
 //   node tools/minrepo/run.mjs --backfill       # config.backfillMonths か月ぶん遡って取得
 //   node tools/minrepo/run.mjs --months 24      # 遡る範囲を指定
@@ -52,7 +53,20 @@ const flags = {
 // フラグの値（--date 2026-06-13 等）をコマンドと誤認しないよう除外する
 const VALUE_FLAGS = ["--months", "--limit", "--date", "--from", "--model", "--games", "--bb", "--rb", "--diff", "--grape", "--grape-games"];
 const flagValueIdx = new Set(VALUE_FLAGS.map((name) => args.indexOf(name)).filter((i) => i >= 0).map((i) => i + 1));
-const command = args.find((a, i) => !a.startsWith("--") && !flagValueIdx.has(i) && Number.isNaN(Number(a))) || "all";
+let command = args.find((a, i) => !a.startsWith("--") && !flagValueIdx.has(i) && Number.isNaN(Number(a))) || "all";
+
+// once = 「現状の攻略をまとめるために、一度だけまとめて取る」。過去 backfillMonths か月ぶんの日別ページと、
+// ジャグラー/ハナハナの台番別ページだけを、間隔を空けて取得する。取得済みのぶんは取り直さない。
+if (command === "once") {
+  const months = flags.months ?? CONFIG.backfillMonths;
+  const days = Math.round(months * 30.4);
+  const sec = (CONFIG.delayMs + CONFIG.jitterMs / 2) / 1000;
+  console.log(`一度だけの取得: 過去 ${months} か月ぶん（日別ページ 約${days}枚${flags.noKishu ? "" : ` + ${CONFIG.kishuDetail.pattern || "注目機種"} の台番別ページ`}）`);
+  console.log(`  アクセス間隔は約 ${sec.toFixed(1)} 秒。日別だけで約 ${Math.round((days * sec) / 60)} 分、台番別を含めると 1 時間前後かかる。`);
+  console.log(`  途中で止めても、同じコマンドで続きから取得する。終わったら以後の取得は不要（作り直しは引数なしの run.mjs）。\n`);
+  flags.backfill = true;
+  command = "all";
+}
 
 async function main() {
   if (command === "sheet") {

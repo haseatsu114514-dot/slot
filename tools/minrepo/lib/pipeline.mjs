@@ -86,6 +86,13 @@ export const MASKED_MESSAGE = `
 !! 自宅回線など、ブラウザで普通に数値が見える環境で実行してください。
 `;
 
+export const EMPTY_MESSAGE = `
+!! 記事の一覧が 1 件も取れませんでした（サイトからの応答が空）。
+!! クラウド上のサーバーや VPN 経由だと、みんレポは中身の無い応答を返します。
+!! 自宅の回線につないだ PC で実行してください。
+!! それでも取れない場合は、ブラウザで保存したページを tools/minrepo/data/inbox/ に入れる方法（run.mjs import）が使えます。
+`;
+
 /**
  * 記事一覧の更新と、レポートHTML（+ 機種別詳細）のダウンロード。
  * opts: { backfill, months, limit, noKishu }
@@ -110,6 +117,10 @@ export async function fetchStep(config, opts = {}, log = console.log) {
   const posts = await listStorePosts(config, since, log);
   for (const p of posts) byDate.set(p.dataDate, p);
   const merged = [...byDate.values()].sort((a, b) => (a.dataDate < b.dataDate ? -1 : 1));
+  if (!merged.length) {
+    console.error(EMPTY_MESSAGE);
+    return { fetched: 0, aborted: "empty" };
+  }
   writeFileSync(indexPath, JSON.stringify(merged, null, 1));
   log(`記事一覧: ${merged.length}件（最古 ${merged[0]?.dataDate} / 最新 ${merged.at(-1)?.dataDate}）`);
 
@@ -117,7 +128,9 @@ export async function fetchStep(config, opts = {}, log = console.log) {
   targets.sort((a, b) => (a.dataDate < b.dataDate ? 1 : -1)); // 新しい順
   const limit = opts.limit ?? Infinity;
   const plan = targets.slice(0, limit);
-  log(`未取得のレポート: ${targets.length}件 → 今回取得 ${plan.length}件（目安 ${Math.round((plan.length * (config.delayMs + config.jitterMs / 2)) / 1000 / 60)}分 + 機種別詳細）`);
+  const perRequestSec = (config.delayMs + config.jitterMs / 2) / 1000;
+  const detailNote = opts.noKishu || (config.kishuDetail || {}).mode === "none" ? "機種別ページは取らない" : "これに機種別ページ（1日あたり数枚）が加わる";
+  log(`未取得のレポート: ${targets.length}件 → 今回取得 ${plan.length}件（日別ページだけで約 ${Math.max(1, Math.round((plan.length * perRequestSec) / 60))}分。${detailNote}）`);
 
   let fetched = 0;
   for (const post of plan) {
@@ -143,7 +156,8 @@ export async function fetchStep(config, opts = {}, log = console.log) {
     const kd = config.kishuDetail || { mode: "none" };
     if (!opts.noKishu && kd.mode !== "none") {
       if (kd.days === "event" && !isEventOrWeekendDate(post.dataDate, config)) continue;
-      const patterns = (config.seriesWatchlist || []).map((s) => new RegExp(s.pattern, "i"));
+      // kishuDetail.pattern があれば、その機種だけ台番別ページを取る（アクセス数を必要最小限にするため）
+      const patterns = kd.pattern ? [new RegExp(kd.pattern, "i")] : (config.seriesWatchlist || []).map((s) => new RegExp(s.pattern, "i"));
       const models = report.models
         .filter((m) => m.model && (m.count == null || m.count >= 2)) // 1台機種はバラエティ表で台番が取れている
         .filter((m) => kd.mode === "all" || patterns.some((re) => re.test(m.model)));

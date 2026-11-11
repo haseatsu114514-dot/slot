@@ -13,8 +13,9 @@ export const CONFIG = {
   jitterMs: 800,
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 
-  // サイトへの自動アクセスをするか。既定は false（しない）: ブラウザで自分で開いて保存したページを
-  // data/inbox/ に置いて取り込む運用にしている。true にすると run.mjs が新しい日を自動で取りに行く
+  // 毎回サイトへ自動アクセスするか。既定は false（しない）。
+  // データは「run.mjs once で一度だけまとめて取得」するか、手で保存したページを data/inbox/ に置いて取り込む。
+  // true にすると run.mjs を実行するたびに新しい日を取りに行く（毎日の自動取得をしたい場合だけ）
   autoFetch: false,
 
   // 自動取得（--backfill）で遡る範囲（か月）。分析期間と同じ半年
@@ -28,7 +29,9 @@ export const CONFIG = {
   // 機種別詳細（?kishu=）の取得対象。
   //   mode: "watchlist" = 下の seriesWatchlist に該当する機種のみ / "all" = 全機種 / "none" = 取得しない
   //   days: "all" = 毎日 / "event" = eventDays に該当する日 + 土日のみ（リクエスト数を節約）
-  kishuDetail: { mode: "watchlist", days: "all" },
+  //   pattern: 指定すると、ウォッチリスト全体ではなくこの正規表現に合う機種だけ取る（アクセス数を減らす）。
+  //            台番ごとの設定推定に必要なのはジャグラー/ハナハナだけなので、既定はその 2 系統に絞っている
+  kishuDetail: { mode: "watchlist", days: "all", pattern: "ジャグラー|ハナハナ" },
 
   // 検証したいイベント日仮説。type: digitContains | nthWeekday | weekday | daysOfMonth | monthDay
   eventDays: [
