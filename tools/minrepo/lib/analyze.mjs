@@ -6,6 +6,7 @@
 
 import { mean, median, mulberry32, permutationPValue, signFlipPValue, addDays, matchesEvent } from "./util.mjs";
 import { analyzeAType } from "./atype.mjs";
+import { analyzeCalendar } from "./calendar.mjs";
 
 export { matchesEvent };
 
@@ -588,5 +589,7 @@ export function analyze(dataset, config, opts = {}) {
     anniversaries: analyzeAnniversaries(dataset, seriesDaysMap, config.anniversaries),
     // ジャグラー/ハナハナの設定推定（専用の乱数系列を使うので、上の p値には影響しない）
     atype: analyzeAType(dataset, config, { lineupEvents: lineup.events, seed: (opts.seed ?? 20260612) + 7 }),
+    // 営業カレンダー（全台・日単位）: 年金・給料日・連休・入替前後・手入力の示唆/おすすめ期間・回収日の傾向
+    calendar: analyzeCalendar(dataset, config, { lineupEvents: lineup.events, seed: (opts.seed ?? 20260612) + 13 }),
   };
 }

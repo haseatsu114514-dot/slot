@@ -4,6 +4,7 @@
 import { formatSigned, toDateParts, nthWeekdayOfMonth, addDays, matchesEvent } from "./util.mjs";
 import { esc, pct, pctPt, num, pv, heat, table, td, chip } from "./html.mjs";
 import { atypeSummaryCard, atypeSections, ATYPE_CSS, atypeScript, atypeMarkdown } from "./report-atype.mjs";
+import { calendarSummaryCard, calendarSection, calendarMarkdown } from "./report-calendar.mjs";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -88,6 +89,9 @@ function summarySection(a, meta) {
 
   // ジャグラー/ハナハナの設定推定
   items.push(atypeSummaryCard(a));
+
+  // 出す日・回収する日（全台の営業カレンダー）
+  items.push(calendarSummaryCard(a));
 
   // 稼働（G数）
   const evG = a.eventGroups
@@ -196,6 +200,8 @@ export function renderHtml(analysis, config, meta) {
 
   sections.push(summarySection(a, meta));
 
+  const cal = calendarSection(a, config, meta);
+  sections.push(cal.html);
   const atype = atypeSections(a, config, meta);
   for (const sec of atype) sections.push(sec.html);
 
@@ -404,6 +410,7 @@ ${table(
 
   const nav = [
     ["summary", "結論"],
+    [cal.id, cal.nav],
     ...atype.map((sec) => [sec.id, sec.nav]),
     ["days", "日にち"],
     ["events", "イベント日"],
@@ -522,6 +529,7 @@ export function renderMarkdown(analysis, config, generatedAt) {
     );
   }
   lines.push("");
+  lines.push(...calendarMarkdown(a));
   lines.push(...atypeMarkdown(a));
   lines.push("## 機種別ランキング（サンプル100台×日以上・勝率順トップ10）");
   for (const m of (a.models || []).filter((m) => m.samples >= 100).slice(0, 10)) {

@@ -19,7 +19,7 @@ export const MANUAL_FILES = {
   },
   calendar: {
     name: "calendar.csv",
-    columns: ["date", "kind", "note"],
+    columns: ["date", "dateTo", "kind", "target", "note"],
   },
 };
 
@@ -169,20 +169,37 @@ export function parseObservations(text) {
   return { rows, errors };
 }
 
-/** calendar.csv → { rows: [{date, kind, note}], errors } */
+/**
+ * calendar.csv → { rows: [{date, kind, target, note}], errors }
+ *  - 期間は dateTo 列、または date 列に "2026-11-10〜2026-11-16"（~ も可）と書く。1 日ごとの行に展開する（最長 92 日）
+ *  - target（任意）は対象機種名への正規表現。「おすすめ週間の対象機種」のように、特定の機種に紐づくメモに使う
+ */
 export function parseCalendar(text) {
   const rows = [];
   const errors = [];
   csvToObjects(text).forEach((o, idx) => {
     if (isComment(o)) return;
-    const date = normalizeDate(o.date);
     const kind = (o.kind || "").trim();
-    if (!date && !kind) return;
-    if (!date || !kind) {
+    const rawDate = String(o.date ?? "").normalize("NFKC").trim();
+    if (!rawDate && !kind) return;
+    const parts = rawDate.split(/\s*[~〜]\s*/);
+    const from = normalizeDate(parts[0]);
+    const to = parts[1] ? normalizeDate(parts[1]) : o.dateTo ? normalizeDate(o.dateTo) : from;
+    if (!from || !to || !kind) {
       errors.push(`calendar.csv ${idx + 2}行目: date / kind が揃っていない`);
       return;
     }
-    rows.push({ date, kind, note: o.note || null });
+    const start = Date.parse(`${from}T00:00:00Z`);
+    const end = Date.parse(`${to}T00:00:00Z`);
+    const span = Math.round((end - start) / 86400000);
+    if (!(span >= 0) || span > 92) {
+      errors.push(`calendar.csv ${idx + 2}行目: 期間が逆か、長すぎる（最長 92 日）`);
+      return;
+    }
+    for (let i = 0; i <= span; i++) {
+      const date = new Date(start + i * 86400000).toISOString().slice(0, 10);
+      rows.push({ date, kind, target: (o.target || "").trim() || null, note: o.note || null });
+    }
   });
   return { rows, errors };
 }
@@ -260,7 +277,7 @@ export function templateCsv(kind) {
   const examples = {
     counts: ["# 例: 2026-11-08", "512", "マイジャグラーV", "6480", "28", "31", "+1850", "", "", "公式台データより（#で始まる行は無視される）"],
     observations: ["# 例: 2026-11-08", "512", "示唆景品", "台上にお菓子の景品が置いてあった（#で始まる行は無視される）"],
-    calendar: ["# 例: 2026-11-09", "入替", "新台入替 9時開店（#で始まる行は無視される）"],
+    calendar: ["# 例: 2026-11-10", "2026-11-16", "おすすめ週間", "北斗|カバネリ", "期間は dateTo に終わりの日、target は対象機種（任意）。#で始まる行は無視される"],
   };
   return `${def.columns.join(",")}\n${examples[kind].map(escCsv).join(",")}\n`;
 }

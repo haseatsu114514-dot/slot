@@ -185,7 +185,11 @@ bad,515,,1000,1,1,,,,
   const multi = parseObservations('date,unit,tag,note\n2026-11-08,501-503,札,\n2026-11-08,"512,515",示唆景品,\n');
   assert.deepEqual(multi.rows.map((r) => `${r.unit}:${r.tag}`), ["501:札", "502:札", "503:札", "512:示唆景品", "515:示唆景品"]);
   const cal = parseCalendar("date,kind,note\n2026-11-09,入替,新台入替\n");
-  assert.deepEqual(cal.rows, [{ date: "2026-11-09", kind: "入替", note: "新台入替" }]);
+  assert.deepEqual(cal.rows, [{ date: "2026-11-09", kind: "入替", target: null, note: "新台入替" }]);
+  // 期間（dateTo 列 / 〜 区切り）と対象機種
+  const ranged = parseCalendar("date,dateTo,kind,target,note\n2026-11-29,2026-12-02,おすすめ週間,北斗|カバネリ,\n2026/11/10〜2026/11/11,,景品示唆,,\n2026-11-05,2026-11-01,逆,,\n");
+  assert.deepEqual(ranged.rows.map((r) => `${r.date}:${r.kind}:${r.target ?? ""}`), ["2026-11-29:おすすめ週間:北斗|カバネリ", "2026-11-30:おすすめ週間:北斗|カバネリ", "2026-12-01:おすすめ週間:北斗|カバネリ", "2026-12-02:おすすめ週間:北斗|カバネリ", "2026-11-10:景品示唆:", "2026-11-11:景品示唆:"]);
+  assert.equal(ranged.errors.length, 1, "逆向きの期間はエラー");
 
   // 統合: 既存行は games/bb/rb を上書き、無い行は追加（機種名はその台番の直近から補う）
   const units = [
